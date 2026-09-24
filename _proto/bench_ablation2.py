@@ -5,7 +5,7 @@ Compare, sur 3 programmes et 4 niveaux d'entrée, le gain net dans la zone d'air
   V  = sans adaptatif + normalisation          W = sans adaptatif + gain fixe calibré
 """
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from prisme_band import excite_band
 from render import load

@@ -6,7 +6,7 @@ Configuration : source passe-haut f0/h (« Harmonique »), gain adaptatif, proje
 cloche 12 kHz Q 2, sortie 24 dB/oct, ADAA ×2. Références : Auto, Bande (« Couleur »), Large.
 """
 import argparse, os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from scipy.io import wavfile
 from prisme_band import excite_band

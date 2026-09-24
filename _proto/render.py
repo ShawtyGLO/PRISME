@@ -8,7 +8,7 @@ Tous les fichiers sont abaissés de 9 dB de la même quantité (marge, A/B relat
 Stéréo : chaque canal traité séparément (adaptatif non lié, à corriger plus tard).
 """
 import argparse, os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from scipy.io import wavfile
 from prisme_band import excite_band

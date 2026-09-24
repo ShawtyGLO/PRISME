@@ -1,6 +1,6 @@
 """Source hybride : mélange de la sortie Auto (harmoniques du corps) et Bande (suit la zone)."""
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from prisme_band import excite_band
 from render import load

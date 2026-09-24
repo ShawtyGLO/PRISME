@@ -1,6 +1,6 @@
 """Résonance restante et stéréo des rendus corrigés (renders/corrige_5dB_30s)."""
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np, soundfile as sf
 from scipy.signal import welch, butter, sosfiltfilt
 sys.stdout.reconfigure(encoding="utf-8")

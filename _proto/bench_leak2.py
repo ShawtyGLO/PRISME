@@ -1,5 +1,5 @@
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from prisme_band import excite_band
 from bench_leak import fuite, m, fs, kw, LO, HI, localisation, zone_stats, rugosite, transitoires

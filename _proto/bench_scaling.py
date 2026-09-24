@@ -1,6 +1,6 @@
 """Loi d'échelle : de vraies harmoniques d'ordre 3 varient comme A³, donc le rapport ajout/zone comme A² (2 dB par dB)."""
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from prisme_band import excite_band
 from render import load

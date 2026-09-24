@@ -1,6 +1,6 @@
 """Rendus n°3 : modes de canal, sur Auto « flanc raide » (référence validée), +5 dB."""
 import os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import butter, sosfiltfilt, lfilter

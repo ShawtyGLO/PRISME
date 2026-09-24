@@ -1,6 +1,6 @@
 """Chemin wet pur vs architectures Auto/Bande/Large ; effet du désaccord de raies."""
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from prisme_band import excite_band
 from prisme_wet import wet_band

@@ -5,7 +5,7 @@ A) Échange local à la bande (« équilibre ») : sortie = sec creusé (cloche 
 B) Sonie K par mode de canal à +5 et +12 dB, et compensation globale qui rendrait la sonie identique.
 """
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from scipy.signal import butter, sosfiltfilt, lfilter
 from prisme_channels import process_channels

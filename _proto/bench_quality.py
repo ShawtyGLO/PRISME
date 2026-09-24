@@ -7,7 +7,7 @@
               delta. 1 = le delta suit les percussions ; bas = il les étale (« liquide »).
 """
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from scipy.signal import welch, butter, sosfilt
 from scipy.ndimage import uniform_filter1d

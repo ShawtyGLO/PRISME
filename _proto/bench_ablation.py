@@ -4,7 +4,7 @@ Tranche A = 30–50 s (zone d'air garnie) ; tranche B = 68–84 s (au-dessus de 
 Prévisibilité (R2) = écart entre le gain net sur A et sur B : plus il est petit, plus le réglage est prévisible.
 """
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from prisme_band import excite_band
 from render import load

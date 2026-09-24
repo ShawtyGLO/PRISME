@@ -3,7 +3,7 @@
     python render2.py [--start 30] [--dur 20] [--gain 5]
 """
 import argparse, os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from scipy.io import wavfile
 from prisme_band import excite_band

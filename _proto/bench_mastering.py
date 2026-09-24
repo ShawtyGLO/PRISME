@@ -1,6 +1,6 @@
 """Qu'est-ce qui change entre le sec et chaque rendu ? niveau, sonie K, crête, équilibre par octave, stéréo par octave."""
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np, soundfile as sf
 from scipy.signal import butter, sosfiltfilt, lfilter
 sys.stdout.reconfigure(encoding="utf-8")
