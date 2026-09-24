@@ -1,0 +1,17 @@
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+_proto/_libs/
+
+# --- audio et binaires lourds (hors versionnage) ---
+_proto/renders/
+*.wav
+*.mp3
+*.flac
+*.flp
+*.vst3
+
+# --- divers ---
+.claude/
+*.bak*
