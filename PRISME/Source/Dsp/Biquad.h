@@ -4,6 +4,8 @@
 
 namespace prisme
 {
+constexpr double kPi = 3.14159265358979323846;   // pas de M_PI : non défini par défaut sous MSVC
+
 struct BiquadCoefs
 {
     double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;          // a0 normalisé à 1
@@ -12,19 +14,19 @@ struct BiquadCoefs
 // Formules RBJ (Audio EQ Cookbook) — mêmes que `rbj_bandpass0db`, `rbj_lowpass`, `rbj_highpass` du prototype.
 inline BiquadCoefs rbjBandpass0dB (double fs, double f0, double q)
 {
-    const double w0 = 2.0 * M_PI * f0 / fs, al = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + al;
+    const double w0 = 2.0 * kPi * f0 / fs, al = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + al;
     return { al / a0, 0.0, -al / a0, -2.0 * c / a0, (1.0 - al) / a0 };
 }
 
 inline BiquadCoefs rbjLowpass (double fs, double f0, double q = 0.7071)
 {
-    const double w0 = 2.0 * M_PI * f0 / fs, al = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + al;
+    const double w0 = 2.0 * kPi * f0 / fs, al = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + al;
     return { (1.0 - c) / 2.0 / a0, (1.0 - c) / a0, (1.0 - c) / 2.0 / a0, -2.0 * c / a0, (1.0 - al) / a0 };
 }
 
 inline BiquadCoefs rbjHighpass (double fs, double f0, double q = 0.7071)
 {
-    const double w0 = 2.0 * M_PI * f0 / fs, al = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + al;
+    const double w0 = 2.0 * kPi * f0 / fs, al = std::sin (w0) / (2.0 * q), c = std::cos (w0), a0 = 1.0 + al;
     return { (1.0 + c) / 2.0 / a0, -(1.0 + c) / a0, (1.0 + c) / 2.0 / a0, -2.0 * c / a0, (1.0 - al) / a0 };
 }
 

@@ -18,6 +18,7 @@ from prisme_band import zone_filter
 from prisme_lift import lift_band
 from prisme_shape import shape_band
 from prisme_exciter_stream import exciter_stream, H0, H_UP
+from prisme_tame import tame_band
 
 OUT = os.path.join(HERE, "..", "PRISME", "tests", "refs")
 os.makedirs(OUT, exist_ok=True)
@@ -77,6 +78,14 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)),
         y = exciter_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, mode=mo, source=so)
         dump(nom, sig, y)
         man.append(f"exciter {nom} {fs} {sh} {f0} {q} {g} {mo} {so}")
+TCFG = [("bell", 3000.0, 0.7, -9.0, 0.5), ("bell", 632.0, 1.2, -4.0, 1.0), ("bell", 250.0, 0.71, 6.0, 0.2), ("highshelf", 9600.0, 0.71, -6.0, 0.5),
+        ("lowshelf", 120.0, 0.71, -6.0, 0.8), ("bell", 8000.0, 2.0, -9.0, 0.0)]
+for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44", synth(44100)[:int(4 * 44100)]), (96000, "syn96", synth(96000)[:int(3 * 96000)])):
+    for i, (sh, f0, q, g, wd) in enumerate(TCFG):
+        nom = f"tame_{nom_sig}_{i}"
+        y = tame_band(sig, fs, shape=sh, f0=f0, q=q, gain_db=g, width=wd, block=8192)
+        dump(nom, sig, y)
+        man.append(f"tame {nom} {fs} {sh} {f0} {q} {g} {wd}")
 for fs in (44100, 48000, 88200, 96000, 192000):
     for sh in ("bell", "highshelf", "lowshelf"):
         for f0, q in ((20.0, 0.3), (42.0, 0.71), (1000.0, 1.0), (9600.0, 12.0), (18000.0, 0.7)):

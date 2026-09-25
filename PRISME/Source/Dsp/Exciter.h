@@ -109,7 +109,7 @@ public:
         aEnv = std::exp (-1.0 / (0.02 * fs));
         aNull = std::exp (-1.0 / (0.03 * fs));
         aNorm = std::exp (-1.0 / (0.2 * fs));
-        rDc = 1.0 - 2.0 * M_PI * 20.0 / fs;
+        rDc = 1.0 - 2.0 * kPi * 20.0 / fs;
         reset();
     }
 
@@ -132,7 +132,7 @@ public:
         if (nSrc == 2) s0 = src2.process (s0);
         // gain adaptatif (montée seulement, jusqu'à +24 dB)
         env = (1.0 - aEnv) * std::abs (s0) + aEnv * env;
-        const double g = std::clamp (drive / std::max (env * (M_PI / 2.0), 1e-9), 1.0, 15.848931924611136);
+        const double g = std::clamp (drive / std::max (env * (kPi / 2.0), 1e-9), 1.0, 15.848931924611136);
         // ×2 : v[2n] = Σ H_UP[2k]·sin[n−k], v[2n+1] = Σ H_UP[2k+1]·sin[n−k]
         hUp.push (s0 * g);
         double v0 = 0, v1 = 0;

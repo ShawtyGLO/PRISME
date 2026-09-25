@@ -50,7 +50,7 @@ public:
         pos = (pos + 1 == D) ? 0 : pos + 1;
         const double m = 20.0 * std::log10 ((Ef + 1e-12) / (Efd + 1e-12));
         double T = std::clamp ((m - m0) / 4.0, 0.0, 1.0);
-        T *= std::clamp ((20.0 * std::log10 (Ef * (M_PI / 2.0) + 1e-12) + 95.0) / 10.0, 0.0, 1.0);   // porte absolue −95 dBFS
+        T *= std::clamp ((20.0 * std::log10 (Ef * (kPi / 2.0) + 1e-12) + 95.0) / 10.0, 0.0, 1.0);   // porte absolue −95 dBFS
         yHold = std::max (T, cRel * yHold);                        // tient et relâche sur la durée choisie
         zAtt = (1.0 - cAtt) * yHold + cAtt * zAtt;                 // attaque du gain bornée
         const double poids = cible == Cible::Transitoires ? zAtt : 1.0 - zAtt;
