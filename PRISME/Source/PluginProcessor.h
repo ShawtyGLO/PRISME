@@ -8,9 +8,14 @@
 
     Architecture additive : sortie = entrée retardée + Σ deltas des bandes. Latence FIXE de 20 échantillons (déclarée à l'hôte).
 
-    Changement de réglage en cours de lecture : le thread message (Timer 30 Hz) construit une NOUVELLE bande (les états DSP repartent de zéro)
-    et la dépose dans son emplacement ; le thread audio la prend sans verrou bloquant et fond l'ancienne vers la nouvelle en 1024 échantillons.
-    Aucune allocation ni destruction sur le thread audio (les anciennes bandes sont détruites par le thread message).
+    CHANGEMENT DE RÉGLAGE EN COURS DE LECTURE
+      · GAIN : appliqué en direct à la bande vivante (aucune reconstruction, aucun état perdu) ;
+      · autre réglage (fréquence, Q, forme, type, mode, canal…) : un thread de construction bâtit une NOUVELLE bande puis la « chauffe » en lui rejouant
+        les 1,5 dernières secondes d'entrée (sinon ses détecteurs et normalisations repartent de zéro et le delta explose pendant 100 ms à 1 s : constaté
+        sur l'Exciter, +11 à +15 dB) ; le thread audio la rattrape sur les derniers échantillons (répartis sur plusieurs blocs), puis fond l'ancienne vers
+        la nouvelle en 1024 échantillons.
+      · aucune allocation ni destruction sur le thread audio (les bandes remplacées sont rendues au thread message).
+      · une bande à gain 0 reste vivante 3 s (pour qu'un passage par zéro pendant un glissement ne la détruise pas), puis est libérée.
 */
 class PrismeProcessor : public juce::AudioProcessor,
                         private juce::Timer
@@ -51,18 +56,34 @@ private:
     struct Slot
     {
         juce::SpinLock lock;
-        std::unique_ptr<prisme::BandeProc> pending;    // déposée par le thread message
-        bool hasPending = false;
-        std::unique_ptr<prisme::BandeProc> cur, old;   // thread audio
-        std::unique_ptr<prisme::BandeProc> trash;      // rendue au thread message pour destruction
+        // déposé par le thread de construction / message, repris par le thread audio
+        std::unique_ptr<prisme::BandeProc> pending;
+        bool hasPending = false, pendingIsOff = false;
+        std::int64_t pendingConsumed = 0;
+        std::unique_ptr<prisme::BandeProc> trash;          // rendue au thread message pour destruction
+        // thread audio
+        std::unique_ptr<prisme::BandeProc> cur, old, warm;
+        std::int64_t warmConsumed = 0;
         int fadePos = 0;
-        prisme::BandeSpec msgSpec;                     // thread message : dernière spec construite
-        bool msgActive = false;
+        float lastGain = 0.0f;
+        std::atomic<float> gainTarget { 0.0f };
+        std::atomic<bool> needRebuild { false };
+        // thread message
+        prisme::BandeSpec msgStruct;
+        bool msgAlive = false;
+        juce::uint32 zeroSince = 0;
     };
+
+    struct Builder;                                        // thread de construction + préchauffage
+    friend struct Builder;
 
     void timerCallback() override;
     void syncBands (bool immediate);
+    void deactivate (Slot& s);
+    bool readRing (std::int64_t from, int count, double* L, double* R) const;
+
     static constexpr int fadeLen = 1024;
+    static constexpr double histSeconds = 1.5;
 
     std::array<Slot, prismeParams::nBands> slots;
     std::atomic<double> fsHz { 0.0 };
@@ -71,6 +92,13 @@ private:
     juce::AbstractFifo fifo { 8192 };
     std::vector<float> fifoBuf = std::vector<float> (8192, 0.0f);
     std::vector<double> bufL, bufR;
+
+    // Historique de l'entrée (anneau) : préchauffage des nouvelles bandes.
+    std::vector<double> ringL, ringR;
+    std::int64_t ringCap = 0;
+    std::atomic<std::int64_t> counter { 0 };               // nombre d'échantillons écrits
+
+    std::unique_ptr<Builder> builder;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PrismeProcessor)
 };

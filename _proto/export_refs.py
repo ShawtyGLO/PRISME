@@ -96,6 +96,7 @@ cfg2[3].update(type="tame", gain_db=4.0, width=0.3, canal="right")
 cfg2[4].update(type="shape", cible="sustain", gain_db=-4.0, time_ms=None, canal="mid")
 xs_full = load(SRC)[1]
 xstereo = np.ascontiguousarray(xs_full[int(30 * fs0): int(32 * fs0)])
+np.asarray(np.ascontiguousarray(xs_full[int(30 * fs0): int(42 * fs0)]), dtype="<f8").tofile(os.path.join(OUT, "music12.f64"))     # 12 s stéréo entrelacées : test de préchauffage
 for nom, cfg in (("type", config_type()), ("variee", cfg2)):
     y = traite(xstereo, int(fs0), cfg)
     np.asarray(xstereo, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.in.f64"))

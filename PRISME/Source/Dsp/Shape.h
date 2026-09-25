@@ -33,6 +33,8 @@ public:
         reset();
     }
 
+    void setGain (double gainDb) { A = std::pow (10.0, gainDb / 20.0); }        // en direct, sans réinitialiser
+
     void reset()
     {
         band.reset();

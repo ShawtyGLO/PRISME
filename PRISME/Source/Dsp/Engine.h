@@ -69,6 +69,20 @@ public:
 
     const BandeSpec& getSpec() const { return spec; }
 
+    // Gain en direct (aucune réinitialisation d'état) : glisser le gain d'une bande ne reconstruit rien.
+    void setGain (double gainDb)
+    {
+        spec.gainDb = gainDb;
+        for (int i = 0; i < n; ++i)
+        {
+            const size_t k = (size_t) i;
+            if (exc[k]) exc[k]->setGain (gainDb);
+            if (tame[k]) tame[k]->setGain (gainDb);
+            if (shape[k]) shape[k]->setGain (gainDb);
+            if (lift[k]) lift[k]->setGain (gainDb);
+        }
+    }
+
     inline void process (double L, double R, double& dL, double& dR)
     {
         dL = dR = 0.0;

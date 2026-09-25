@@ -178,6 +178,49 @@ int main (int argc, char** argv)
         }
     }
     std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; tame : " << pireTame << " ; engine : " << pireEngine << " (écarts relatifs max)\n";
+    // W01 : une bande NEUVE, préchauffée avec 1,5 s d'historique, doit avoir le niveau de delta d'une bande vivante depuis le début
+    {
+        const auto m = lire (dir + "/music12.f64");
+        if (! m.empty())
+        {
+            const size_t n = m.size() / 2;
+            const double fs = 48000.0;
+            const size_t t0 = (size_t) (6.0 * fs), hist = (size_t) (1.5 * fs);
+            struct Cfg { TypeBande t; Forme f; double f0, q, g; ModeSat mo; const char* nom; };
+            const Cfg cfgs[] = { { TypeBande::Exciter, Forme::Cloche, 3000, 0.71, 2, ModeSat::Iron, "Exciter cloche 3 k +2" },
+                                 { TypeBande::Exciter, Forme::ShelfGrave, 42, 0.71, 3, ModeSat::Iron, "Exciter shelf grave 42 +3" },
+                                 { TypeBande::Exciter, Forme::ShelfAigu, 9600, 0.71, 5, ModeSat::Iron, "Exciter shelf aigu 9,6 k +5" },
+                                 { TypeBande::Tame, Forme::Cloche, 3000, 0.7, -9, ModeSat::Iron, "Tame cloche 3 k -9" },
+                                 { TypeBande::Shape, Forme::Cloche, 250, 1.0, 6, ModeSat::Iron, "Shape cloche 250 +6" },
+                                 { TypeBande::Lift, Forme::Cloche, 3000, 0.7, 6, ModeSat::Iron, "Lift cloche 3 k +6" } };
+            for (const auto& c : cfgs)
+            {
+                BandeSpec sp; sp.type = c.t; sp.forme = c.f; sp.f0 = c.f0; sp.q = c.q; sp.gainDb = c.g; sp.mode = c.mo; sp.amount = 70.0;
+                BandeProc vivant, neuve, neuveFroide;
+                vivant.prepare (fs, sp); neuve.prepare (fs, sp); neuveFroide.prepare (fs, sp);
+                std::vector<double> dv, dn, dc;
+                double dl, dr;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    vivant.process (m[2 * i], m[2 * i + 1], dl, dr);
+                    if (i >= t0) dv.push_back (dl);
+                    if (i >= t0 - hist) { neuve.process (m[2 * i], m[2 * i + 1], dl, dr); if (i >= t0) dn.push_back (dl); }
+                    if (i >= t0) { neuveFroide.process (m[2 * i], m[2 * i + 1], dl, dr); dc.push_back (dl); }
+                }
+                auto tranche = [&] (const std::vector<double>& v, size_t a, size_t b) { double s = 0; for (size_t i = a; i < b && i < v.size(); ++i) s += v[i] * v[i]; return 10.0 * std::log10 (s / (double) (b - a) + 1e-30); };
+                double pireW = 0, pireC = 0;
+                for (size_t a = 0; a + 2400 <= (size_t) (2.0 * fs); a += 2400)         // tranches de 50 ms sur les 2 premières secondes
+                {
+                    pireW = std::max (pireW, std::abs (tranche (dn, a, a + 2400) - tranche (dv, a, a + 2400)));
+                    pireC = std::max (pireC, std::abs (tranche (dc, a, a + 2400) - tranche (dv, a, a + 2400)));
+                }
+                ++total;
+                const bool ok = pireW <= 1.0;
+                if (! ok) ++echecs;
+                std::cout << (ok ? "  PASS  " : "  FAIL  ") << "W01 préchauffage " << c.nom << " : écart de niveau du delta, pire tranche de 50 ms : préchauffée " << pireW << " dB, à froid " << pireC << " dB" << std::endl;
+            }
+        }
+    }
     // coût : 60 s de mono à 48 kHz, configuration type
     {
         Lift l; l.prepare (48000, Forme::Cloche, 1000, 1.0, 12, 60, 150);

@@ -113,6 +113,12 @@ public:
         reset();
     }
 
+    void setGain (double gainDb)                              // en direct, sans réinitialiser
+    {
+        sign = gainDb >= 0 ? 1.0 : -1.0;
+        amount = std::pow (10.0, std::abs (gainDb) / 20.0) - 1.0;
+    }
+
     void reset()
     {
         src.reset(); src2.reset(); ref1.reset(); ref2.reset(); zb.reset();

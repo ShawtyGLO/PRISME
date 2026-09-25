@@ -82,7 +82,7 @@ public:
     {
         slider.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-        slider.setRotaryParameters (juce::degreesToRadians (135.0f), juce::degreesToRadians (405.0f), true);
+        slider.setRotaryParameters (juce::degreesToRadians (225.0f), juce::degreesToRadians (495.0f), true);
         slider.setColour (juce::Slider::rotarySliderFillColourId, c);
         slider.setLookAndFeel (&lnf);
         slider.setVelocityBasedMode (false);

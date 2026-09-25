@@ -35,6 +35,9 @@ public:
         reset();
     }
 
+    // Changement de gain en direct (sans réinitialiser l'état).
+    void setGain (double gainDb) { G = gainDb; W = std::max (1.667 * std::abs (G), 6.0); }
+
     void reset()
     {
         band.reset();
@@ -58,12 +61,12 @@ public:
         yHold = std::max (Ea, cr * yHold);                     // attaque rapide, relâchement exponentiel
         const double L = 20.0 * std::log10 (yHold * (kPi / 2.0) + 1e-12);
         double s = smoothstep ((T - L) / W);
+        const double Es = es.process (ab);                      // le plancher est suivi même à G <= 0 (n'influence pas la sortie) : un passage à G > 0 en direct part chaud
+        const double inv = std::min (1.0 / (Es * (kPi / 2.0) + 1e-9), std::pow (10.0, -plancherMin / 20.0));
+        if (firstSample) { invFloor = inv; firstSample = false; }
+        invFloor = std::max (inv, cn * invFloor);              // min-suiveur : 1/N = max(1/Es, c·1/N)
         if (G > 0.0)
         {
-            const double Es = es.process (ab);
-            const double inv = std::min (1.0 / (Es * (kPi / 2.0) + 1e-9), std::pow (10.0, -plancherMin / 20.0));
-            if (firstSample) { invFloor = inv; firstSample = false; }
-            invFloor = std::max (inv, cn * invFloor);          // min-suiveur : 1/N = max(1/Es, c·1/N)
             const double N = std::clamp (-20.0 * std::log10 (invFloor), plancherMin, plancherMax);
             const double Ls = 20.0 * std::log10 (Es * (kPi / 2.0) + 1e-12);
             s *= smoothstep ((Ls - N - marge) / 6.0);

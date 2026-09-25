@@ -88,6 +88,13 @@ public:
         reset();
     }
 
+    void setGain (double gainDb)                              // en direct, sans réinitialiser : profondeur et sens seulement
+    {
+        sign = gainDb > 0 ? 1.0 : -1.0;
+        depth = std::abs (gainDb);
+        ratio = (float) std::clamp (depth / 4.5, 1.0, 3.0);
+    }
+
     void reset()
     {
         for (auto* v : { &aZ1, &aZ2, &sZ1, &sZ2 }) std::fill (v->begin(), v->end(), 0.0);
