@@ -437,10 +437,9 @@ void BandCard::resized()
             typeSegs[i]->setBounds (x3, cy + 20, juce::jmin (w3, typeSegs[i]->preferredWidth()), 30);
             cy += 56;
         }
-        int maxW = 0;
-        for (auto& sg : typeSegs) maxW = juce::jmax (maxW, juce::jmin (w3, sg->preferredWidth()));
-        int kx2 = x3 + maxW + 24;
-        for (auto& k : typeKnobs) { k->setBounds (kx2, yTop + 24, Knob::preferredWidth(), Knob::preferredHeight()); kx2 += Knob::preferredWidth() + 8; }
+        // Saturation (et Tilt en mode Bande) à droite de la rangée SOURCE : sous le sélecteur de mode, qui est large
+        int kx2 = x3 + (typeSegs.size() > 1 ? juce::jmin (w3, typeSegs[1]->preferredWidth()) : 0) + 28;
+        for (auto& k : typeKnobs) { k->setBounds (kx2, yTop + 76, Knob::preferredWidth(), Knob::preferredHeight()); kx2 += Knob::preferredWidth() + 8; }
     }
     else
     {

@@ -56,14 +56,14 @@ class ExciterStream:
     latence = D_OS
 
     def __init__(self, fs, shape="bell", f0=12000.0, q=2.0, gain_db=5.0, mode="iron", source="auto", drive=1.5,
-                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03, env_tau=AGC_TAU, gmin=AGC_GMIN, gmax_db=AGC_GMAX_DB, tilt=0.0):
+                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03, env_tau=AGC_TAU, gmin=AGC_GMIN, gmax_db=AGC_GMAX_DB, tilt=0.0, src_f0=None):
         self.fs, self.mode, self.source, self.drive = fs, mode, source, drive
         self.sign, self.amount = (1.0 if gain_db >= 0 else -1.0), 10.0 ** (abs(gain_db) / 20.0) - 1.0
         self.floor_ratio, self.out_sections = floor_ratio, out_sections
         self.focus = source != "band"
         self.courbe, self.courbe_lin = _courbe(mode, drive), _courbe("lin")
         if source == "auto":
-            self.zf = zone_filter(shape, fs, max(f0 / H_DOMINANT[mode], 60.0), max(q, src_q))
+            self.zf = zone_filter(shape, fs, src_f0 if src_f0 else max(f0 / H_DOMINANT[mode], 60.0), max(q, src_q))     # src_f0 : centre de source imposé (essai multibande)
             self.z_src = [np.zeros(2), np.zeros(2)]
         else:                                                              # « Bande »
             self.zf = zone_filter(shape, fs, f0, q)
