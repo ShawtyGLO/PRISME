@@ -181,7 +181,12 @@ void PrismeProcessor::syncBands (bool immediate)
     for (int b = 0; b < prismeParams::nBands; ++b)
     {
         auto& s = slots[(size_t) b];
-        const auto spec = prismeParams::readSpec (apvts, b);
+        auto spec = prismeParams::readSpec (apvts, b);
+        if (spec.type == prisme::TypeBande::Exciter && spec.gainDb < 0.0)      // V1 : pas d'Exciter négatif (décision de llg53) → le gain revient à 0
+        {
+            if (auto* gp = apvts.getParameter (prismeParams::pid (b, "gain"))) gp->setValueNotifyingHost (gp->convertTo0to1 (0.0f));
+            spec.gainDb = 0.0;
+        }
         auto structure = spec;
         structure.gainDb = 0.0;
         structure.drive = 0.0;                                                 // gain et saturation se règlent en direct : pas de reconstruction

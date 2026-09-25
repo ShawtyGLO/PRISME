@@ -253,7 +253,8 @@ void CurveDisplay::mouseDrag (const juce::MouseEvent& e)
 {
     if (dragBand < 0) return;
     const float f = juce::jlimit (kFMin, kFMax, fOf (juce::jlimit (0.0f, (float) getWidth(), (float) e.x)));
-    const float g = std::round (juce::jlimit (-kGMax, kGMax, gOf ((float) e.y)) * 10.0f) / 10.0f;
+    const bool exciter = juce::roundToInt (pp::raw (proc.apvts, pp::pid (dragBand, "type"))) == 0;      // Exciter : gain de 0 à +15 seulement
+    const float g = std::round (juce::jlimit (exciter ? 0.0f : -kGMax, kGMax, gOf ((float) e.y)) * 10.0f) / 10.0f;
     setParam (pp::pid (dragBand, "freq"), f, false);
     setParam (pp::pid (dragBand, "gain"), g, false);
     repaint();
@@ -358,7 +359,7 @@ void BandCard::rebuild (int b)
     };
     addPos ("freq", U8 ("Fréquence"), [] (double v) { return fmtFreq (v); });
     addPos ("q", "Q", [] (double v) { return juce::String (v, 2); });
-    juce::String gl[4] = { U8 ("Gain (− négatif)"), U8 ("Gain (− réduit)"), U8 ("Gain (±)"), U8 ("Gain (− expandeur)") };
+    juce::String gl[4] = { U8 ("Gain (+ seulement)"), U8 ("Gain (− réduit)"), U8 ("Gain (±)"), U8 ("Gain (− expandeur)") };
     addPos ("gain", gl[type], [] (double v) { return fmtGain (v); });
 
     auto addKnob = [&] (const char* id, const juce::String& label, std::function<juce::String (double)> f)
@@ -386,7 +387,7 @@ void BandCard::rebuild (int b)
         addKnob ("release", U8 ("Relâchement"), [] (double v) { return juce::String (juce::roundToInt (v)) + " ms"; });
     }
     juce::String notes[4] = {
-        U8 ("Ajoute des harmoniques dans la zone. Un gain négatif retire de la couleur (à renommer)."),
+        U8 ("Ajoute des harmoniques dans la zone (gain de 0 à +15 dB). Saturation : de doux à très saturé."),
         U8 ("Atténue les résonances qui ressortent dans la zone (gain −) ou accentue les pics déjà forts (gain +). Largeur : de fin à large."),
         U8 ("Agit sur les transitoires ou sur le sustain de la bande, dans les deux sens. Durée : combien de temps dure l'effet après une attaque."),
         U8 ("Relève ce qui est faible dans la zone (gain +) ou l'abaisse (gain −). Amount : plus il monte, plus de matière est concernée. Protection du souffle automatique.") };
