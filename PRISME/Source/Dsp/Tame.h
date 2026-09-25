@@ -1,6 +1,6 @@
 // PRISME — type de bande « Tame » v3 (port de _proto/prisme_tame.py) : atténue (gain −) ou accentue (gain +) les résonances de la zone.
 //   analyse 24 bandes/octave (Q 14) → niveaux → excès sur les voisines → réduction bornée, plateau, normalisation locale
-//   → synthèse par bandes simples (Q 20) ; détection décimée à fs/16 ; causal, latence propre nulle, état conservé entre blocs.
+//   → synthèse par bandes simples (Q 20) ; détection ET gains décimés à fs/16 (le coefficient c = (g−1)/S monte linéairement d'une cible à la suivante) ; causal, latence propre nulle, état conservé entre blocs.
 //
 // ⚠️ Fidélité au prototype : le prototype Python fait la chaîne spectrale (niveaux, filtres, plateau, seuil) en float32 ; ce port en
 // reproduit les arrondis (type `float` aux mêmes endroits, sommation de scipy.ndimage.uniform_filter1d) pour que les décisions à seuil
@@ -58,7 +58,7 @@ public:
             const auto c = rbjBandpass0dB (fs, f[(size_t) k], QA);
             aB0[(size_t) k] = c.b0; aB1[(size_t) k] = c.b1; aB2[(size_t) k] = c.b2; aA1[(size_t) k] = c.a1; aA2[(size_t) k] = c.a2;
         }
-        for (auto* v : { &sB0, &sB1, &sB2, &sA1, &sA2, &sZ1, &sZ2, &term }) v->assign (act.size(), 0.0);
+        for (auto* v : { &sB0, &sB1, &sB2, &sA1, &sA2, &sZ1, &sZ2, &term, &cPrev, &cCur }) v->assign (act.size(), 0.0);
         for (size_t j = 0; j < act.size(); ++j)
         {
             const auto c = rbjBandpass0dB (fs, f[(size_t) act[j]], QS);
@@ -77,16 +77,13 @@ public:
         }
         cAtt = std::exp (-(double) DEC / (0.004 * fs));
         cRel = std::exp (-(double) DEC / (0.08 * fs));
-        cFin = std::exp (-1.0 / (0.0006 * fs));
-        // noyau de normalisation K[m] = Re H_{fc[m]}(3 kHz), arrondi en float32 comme le prototype
+                // noyau de normalisation K[m] = Re H_{fc[m]}(3 kHz), arrondi en float32 comme le prototype
         K.assign (2 * JK + 1, 0.0);
         const double pts = 2.0 * kPi * 3000.0 / fs;
         for (int m = -JK; m <= JK; ++m)
             K[(size_t) (m + JK)] = (double) (float) response (rbjBandpass0dB (fs, 3000.0 * std::pow (2.0, (double) m / RA), QS), pts).real();
         for (auto* v : { &Lf, &Lp, &Ls, &mo, &mi, &refv, &epv, &redf, &redm, &redu, &tmpf }) v->assign ((size_t) N, 0.0f);
         for (auto* v : { &redD, &SD, &lastRed, &lastS, &ef, &es, &zra, &zrr }) v->assign ((size_t) N, 0.0);
-        redHold.assign (act.size(), 0.0); sHold.assign (act.size(), 1.0); zfin.assign (act.size(), 0.0);
-        gCache.assign (act.size(), 0.0); gRed.assign (act.size(), 0.0);
         line.assign ((size_t) N + 400, 0.0);
         reset();
     }
@@ -97,8 +94,8 @@ public:
         for (auto* v : { &ef, &es, &zra, &zrr }) std::fill (v->begin(), v->end(), 0.0);
         std::fill (lastRed.begin(), lastRed.end(), 0.0);
         std::fill (lastS.begin(), lastS.end(), 1.0);
-        std::fill (zfin.begin(), zfin.end(), 0.0);
-        std::fill (gRed.begin(), gRed.end(), -1.0e300);      // force le premier calcul de puissance
+        std::fill (cPrev.begin(), cPrev.end(), 0.0);
+        std::fill (cCur.begin(), cCur.end(), 0.0);
         count = 0;
     }
 
@@ -120,22 +117,27 @@ public:
         }
         if (point) decimatedStep();
         const int na = (int) act.size();
-        double *zf = zfin.data(), *rh = redHold.data(), *sh = sHold.data(), *tm = term.data(), *sz1 = sZ1.data(), *sz2 = sZ2.data();
+        double *cp = cPrev.data(), *cc = cCur.data(), *tm = term.data(), *sz1 = sZ1.data(), *sz2 = sZ2.data();
         const double *sb0 = sB0.data(), *sb1 = sB1.data(), *sb2 = sB2.data(), *sa1 = sA1.data(), *sa2 = sA2.data();
-        if (point)
-            for (int j = 0; j < na; ++j) { const size_t k = (size_t) act[(size_t) j]; rh[j] = lastRed[k]; sh[j] = lastS[k]; }   // maintien d'ordre zéro entre deux points
-        const double omFin = 1.0 - cFin, kExp = sign * 0.11512925464970229;                                                  // ln(10)/20
+        if (point)                                            // nouvelle cible c = (g − 1)/S aux points décimés seulement : exp et division 1 fois sur 16
+        {
+            const double kExp = sign * 0.11512925464970229;   // ln(10)/20
+            for (int j = 0; j < na; ++j)
+            {
+                const size_t k = (size_t) act[(size_t) j];
+                cp[j] = cc[j];
+                cc[j] = (expFast (kExp * redD[k]) - 1.0) / SD[k];
+            }
+        }
+        const double ph = (double) (count % DEC) / (double) DEC;      // rampe linéaire de l'ancienne cible vers la nouvelle (retard 16 échantillons, causal)
+        const double omph = 1.0 - ph;
         for (int j = 0; j < na; ++j)
         {
-            zf[j] = omFin * rh[j] + cFin * zf[j];                // lissage court plein débit
-            if (rh[j] == 0.0 && zf[j] < 1e-14) zf[j] = 0.0;      // fin de queue : on ne calcule plus de gain pour < 1e-14 dB
             const double bs = sb0[j] * x + sz1[j];
             sz1[j] = sb1[j] * x - sa1[j] * bs + sz2[j];
             sz2[j] = sb2[j] * x - sa2[j] * bs;
-            tm[j] = bs;
+            tm[j] = (cp[j] * omph + cc[j] * ph) * bs;
         }
-        for (int j = 0; j < na; ++j)                             // gain de chaque bande : sans branche
-            tm[j] *= (expFast (kExp * zf[j]) - 1.0) / sh[j];
         double y = x;
         for (int j = 0; j < na; ++j) y += tm[j];
         ++count;
@@ -283,11 +285,11 @@ private:
         lastS = SD;
     }
 
-    double fs = 48000, sign = -1, depth = 9, cAtt = 0, cRel = 0, cFin = 0;
+    double fs = 48000, sign = -1, depth = 9, cAtt = 0, cRel = 0;
     float ratio = 1, seuil = 4.5f;
     int N = 0, nP = 0, sizeSm = 3, sizeO = 3, sizeI = 3, sizeS = 3;
     long count = 0;
-    std::vector<double> f, w, K, cf, cse, ef, es, zra, zrr, redD, SD, lastRed, lastS, redHold, sHold, zfin, gCache, gRed, line;
+    std::vector<double> f, w, K, cf, cse, ef, es, zra, zrr, redD, SD, lastRed, lastS, cPrev, cCur, line;
     std::vector<int> act;
     std::vector<double> aB0, aB1, aB2, aA1, aA2, aZ1, aZ2, aOmCf, aOmCs;          // analyse : N biquads + enveloppes (tableaux séparés → vectorisable)
     std::vector<double> sB0, sB1, sB2, sA1, sA2, sZ1, sZ2, term;                    // synthèse : bandes actives
