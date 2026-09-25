@@ -20,3 +20,8 @@ _proto/renders/
 PRISME/tests/refs/
 PRISME/tests/*.exe
 PRISME/tests/*.obj
+
+# JUCE : fichiers générés / binaires
+PRISME/Builds/
+PRISME/JuceLibraryCode/
+_outils/

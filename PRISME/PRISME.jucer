@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="prsm01" name="PRISME" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.1.0"
+              companyName="Shawty" pluginFormats="buildVST3,buildStandalone"
+              pluginName="PRISME" pluginDesc="EQ a bandes de traitement (Exciter, Tame, Shape, Lift)"
+              pluginManufacturer="Shawty" pluginManufacturerCode="Shwt" pluginCode="Prsm"
+              pluginVST3Category="Fx,EQ" pluginCharacteristicsValue="">
+  <MAINGROUP id="prsmMG" name="PRISME">
+    <GROUP id="{D1000000-0000-0000-0000-000000000001}" name="Source">
+      <FILE id="srcPP1" name="PluginProcessor.cpp" compile="1" resource="0"
+            file="Source/PluginProcessor.cpp"/>
+      <FILE id="srcPP2" name="PluginProcessor.h" compile="0" resource="0"
+            file="Source/PluginProcessor.h"/>
+      <FILE id="srcPE1" name="PluginEditor.cpp" compile="1" resource="0"
+            file="Source/PluginEditor.cpp"/>
+      <FILE id="srcPE2" name="PluginEditor.h" compile="0" resource="0"
+            file="Source/PluginEditor.h"/>
+      <FILE id="srcPR1" name="Params.h" compile="0" resource="0" file="Source/Params.h"/>
+      <FILE id="srcUI1" name="UiParts.h" compile="0" resource="0" file="Source/UiParts.h"/>
+      <GROUP id="{D1000000-0000-0000-0000-000000000002}" name="Dsp">
+        <FILE id="srcD1" name="Biquad.h" compile="0" resource="0" file="Source/Dsp/Biquad.h"/>
+        <FILE id="srcD2" name="Lift.h" compile="0" resource="0" file="Source/Dsp/Lift.h"/>
+        <FILE id="srcD3" name="Shape.h" compile="0" resource="0" file="Source/Dsp/Shape.h"/>
+        <FILE id="srcD4" name="Exciter.h" compile="0" resource="0" file="Source/Dsp/Exciter.h"/>
+        <FILE id="srcD5" name="Tame.h" compile="0" resource="0" file="Source/Dsp/Tame.h"/>
+        <FILE id="srcD6" name="Engine.h" compile="0" resource="0" file="Source/Dsp/Engine.h"/>
+        <FILE id="srcD7" name="Tables.h" compile="0" resource="0" file="Source/Dsp/Tables.h"/>
+      </GROUP>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_dsp" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <EXPORTFORMATS>
+    <VS2022 targetFolder="Builds/VisualStudio2022" extraCompilerFlags="/utf-8">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="PRISME"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="PRISME"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_audio_devices" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_audio_formats" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_audio_processors" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_audio_utils" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_core" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_data_structures" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_dsp" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_events" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_graphics" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_gui_basics" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+        <MODULEPATH id="juce_gui_extra" path="C:\Users\llg53\Desktop\JUCE\modules"/>
+      </MODULEPATHS>
+    </VS2022>
+  </EXPORTFORMATS>
+</JUCERPROJECT>

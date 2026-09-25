@@ -1,7 +1,8 @@
 // PRISME — assemblage des 5 bandes en flux (port de _proto/prisme_engine_stream.py).
 //   sortie = entrée retardée + Σ deltas des bandes (parallèle : l'ordre n'a pas d'importance) ; modes de canal Stéréo / Mid / Side / L / R.
-// LATENCE FIXE de 20 échantillons (Exciter.latence) : le sec ET les deltas du Tame / Shape / Lift (latence propre nulle) sont retardés d'autant,
+// LATENCE FIXE de 20 échantillons (Exciter::latence) : le sec ET les deltas du Tame / Shape / Lift (latence propre nulle) sont retardés d'autant,
 // avec ou sans Exciter actif (les hôtes n'aiment pas une latence qui change). À déclarer avec setLatencySamples (20).
+// `BandeProc` = UNE bande (ses instances par canal + ses retards) : le plugin les remplace une à une avec un fondu quand un réglage change.
 // Aucune dépendance JUCE. prepare() alloue ; process() n'alloue pas.
 #pragma once
 #include "Exciter.h"
@@ -34,6 +35,74 @@ struct BandeSpec
     double timeMs = 0.0, sens = 0.85;                       // timeMs <= 0 : durée par défaut
     // Lift
     double amount = 50.0, releaseMs = 150.0;
+
+    bool actif() const { return on && gainDb != 0.0; }      // gain 0 : sortie = entrée retardée exactement
+    bool operator== (const BandeSpec& o) const
+    {
+        return on == o.on && type == o.type && forme == o.forme && f0 == o.f0 && q == o.q && gainDb == o.gainDb && canal == o.canal && mode == o.mode
+            && source == o.source && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs;
+    }
+    bool operator!= (const BandeSpec& o) const { return ! (*this == o); }
+};
+
+// Une bande : renvoie son DELTA stéréo aligné sur l'entrée retardée de `latence`.
+class BandeProc
+{
+public:
+    void prepare (double fs, const BandeSpec& s)
+    {
+        spec = s;
+        n = s.canal == Canal::Stereo ? 2 : 1;
+        for (int i = 0; i < n; ++i)
+        {
+            const size_t k = (size_t) i;
+            retard[k].init (0.0);
+            switch (s.type)
+            {
+                case TypeBande::Exciter: exc[k] = std::make_unique<Exciter>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.mode, s.source); break;
+                case TypeBande::Tame:    tame[k] = std::make_unique<Tame>();   tame[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.width); break;
+                case TypeBande::Shape:   shape[k] = std::make_unique<Shape>(); shape[k]->prepare (fs, s.cible, s.forme, s.f0, s.q, s.gainDb, s.timeMs, s.sens); break;
+                case TypeBande::Lift:    lift[k] = std::make_unique<Lift>();   lift[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.amount, s.releaseMs); break;
+            }
+        }
+    }
+
+    const BandeSpec& getSpec() const { return spec; }
+
+    inline void process (double L, double R, double& dL, double& dR)
+    {
+        dL = dR = 0.0;
+        switch (spec.canal)
+        {
+            case Canal::Stereo: dL = delta (0, L); dR = delta (1, R); break;
+            case Canal::Mid:   { const double d = delta (0, 0.5 * (L + R)); dL = dR = d; break; }
+            case Canal::Side:  { const double d = delta (0, 0.5 * (L - R)); dL = d; dR = -d; break; }
+            case Canal::Left:  dL = delta (0, L); break;
+            case Canal::Right: dR = delta (0, R); break;
+        }
+    }
+
+private:
+    inline double delta (int i, double z)
+    {
+        const size_t k = (size_t) i;
+        switch (spec.type)
+        {
+            case TypeBande::Exciter: return exc[k]->process (z);                                   // porte déjà la latence
+            case TypeBande::Tame:    return retard[k].push (tame[k]->process (z) - z);            // latence propre nulle : on retarde le delta
+            case TypeBande::Shape:   return retard[k].push (shape[k]->process (z) - z);
+            case TypeBande::Lift:    return retard[k].push (lift[k]->process (z) - z);
+        }
+        return 0.0;
+    }
+
+    BandeSpec spec;
+    int n = 1;
+    std::array<std::unique_ptr<Exciter>, 2> exc;
+    std::array<std::unique_ptr<Tame>, 2> tame;
+    std::array<std::unique_ptr<Shape>, 2> shape;
+    std::array<std::unique_ptr<Lift>, 2> lift;
+    std::array<Retard<Exciter::latence>, 2> retard;
 };
 
 class Engine
@@ -49,11 +118,9 @@ public:
         bandes.clear();
         for (const auto& s : specs)
         {
-            if (! s.on || s.gainDb == 0.0) continue;         // gain 0 : sortie = entrée retardée exactement
-            Bande b;
-            b.spec = s;
-            b.n = s.canal == Canal::Stereo ? 2 : 1;
-            for (int i = 0; i < b.n; ++i) creer (b, i);
+            if (! s.actif()) continue;
+            auto b = std::make_unique<BandeProc>();
+            b->prepare (fs, s);
             bandes.push_back (std::move (b));
         }
     }
@@ -67,14 +134,10 @@ public:
             double oL = secL.push (L), oR = secR.push (R);
             for (auto& b : bandes)
             {
-                switch (b.spec.canal)
-                {
-                    case Canal::Stereo: oL += delta (b, 0, L); oR += delta (b, 1, R); break;
-                    case Canal::Mid:   { const double d = delta (b, 0, 0.5 * (L + R)); oL += d; oR += d; break; }
-                    case Canal::Side:  { const double d = delta (b, 0, 0.5 * (L - R)); oL += d; oR -= d; break; }
-                    case Canal::Left:  oL += delta (b, 0, L); break;
-                    case Canal::Right: oR += delta (b, 0, R); break;
-                }
+                double dL, dR;
+                b->process (L, R, dL, dR);
+                oL += dL;
+                oR += dR;
             }
             outL[i] = oL;
             outR[i] = oR;
@@ -82,46 +145,8 @@ public:
     }
 
 private:
-    struct Bande
-    {
-        BandeSpec spec;
-        int n = 1;
-        std::array<std::unique_ptr<Exciter>, 2> exc;
-        std::array<std::unique_ptr<Tame>, 2> tame;
-        std::array<std::unique_ptr<Shape>, 2> shape;
-        std::array<std::unique_ptr<Lift>, 2> lift;
-        std::array<Retard<Exciter::latence>, 2> retard;
-    };
-
-    void creer (Bande& b, int i) const
-    {
-        const auto& s = b.spec;
-        b.retard[(size_t) i].init (0.0);
-        switch (s.type)
-        {
-            case TypeBande::Exciter: b.exc[(size_t) i] = std::make_unique<Exciter>();   b.exc[(size_t) i]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.mode, s.source); break;
-            case TypeBande::Tame:    b.tame[(size_t) i] = std::make_unique<Tame>();     b.tame[(size_t) i]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.width); break;
-            case TypeBande::Shape:   b.shape[(size_t) i] = std::make_unique<Shape>();   b.shape[(size_t) i]->prepare (fs, s.cible, s.forme, s.f0, s.q, s.gainDb, s.timeMs, s.sens); break;
-            case TypeBande::Lift:    b.lift[(size_t) i] = std::make_unique<Lift>();     b.lift[(size_t) i]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.amount, s.releaseMs); break;
-        }
-    }
-
-    // Delta de la bande sur le signal z, aligné sur l'entrée retardée de `latence`.
-    static inline double delta (Bande& b, int i, double z)
-    {
-        const size_t k = (size_t) i;
-        switch (b.spec.type)
-        {
-            case TypeBande::Exciter: return b.exc[k]->process (z);                                   // porte déjà la latence
-            case TypeBande::Tame:    return b.retard[k].push (b.tame[k]->process (z) - z);          // latence propre nulle : on retarde le delta
-            case TypeBande::Shape:   return b.retard[k].push (b.shape[k]->process (z) - z);
-            case TypeBande::Lift:    return b.retard[k].push (b.lift[k]->process (z) - z);
-        }
-        return 0.0;
-    }
-
     double fs = 48000;
     Retard<Exciter::latence> secL, secR;
-    std::vector<Bande> bandes;
+    std::vector<std::unique_ptr<BandeProc>> bandes;
 };
 }
