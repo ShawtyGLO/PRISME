@@ -18,11 +18,11 @@ enum class SourceExc { Auto, Bande };
 
 namespace courbes
 {
-constexpr double B = 0.18, EPS_R = 0.05;
+constexpr double B = 0.18, EPS_R = 0.05;               // EPS_R : coude du Rectifier à drive 1,5 (varie avec « Saturation » : eps = 0,05 · (1,5 / drive)²)
 inline double logcosh (double u) { const double a = std::abs (u); return a + std::log1p (std::exp (-2.0 * a)) - std::log (2.0); }
 inline double SL() { const double t = std::tanh (B); return 1.0 - t * t; }
 
-inline double f (ModeSat m, double x)
+inline double f (ModeSat m, double x, double eps = EPS_R)
 {
     switch (m)
     {
@@ -30,12 +30,12 @@ inline double f (ModeSat m, double x)
         case ModeSat::Diode:  return x >= 0 ? 1.0 - std::exp (-std::abs (x)) : -(1.0 - std::exp (-1.5 * std::abs (x))) / 1.5;
         case ModeSat::Iron:   return x / std::sqrt (1.0 + x * x);
         case ModeSat::ClassA: { const double c = std::clamp (x, -1.0, 1.0); return c - c * c * c / 3.0; }
-        case ModeSat::Rect:   return std::sqrt (x * x + EPS_R * EPS_R) - EPS_R;
+        case ModeSat::Rect:   return std::sqrt (x * x + eps * eps) - eps;
     }
     return x;
 }
 
-inline double F (ModeSat m, double x)                      // primitive (ADAA d'ordre 1)
+inline double F (ModeSat m, double x, double eps = EPS_R)         // primitive (ADAA d'ordre 1)
 {
     switch (m)
     {
@@ -51,7 +51,7 @@ inline double F (ModeSat m, double x)                      // primitive (ADAA d'
             const double a = std::abs (x);
             return a <= 1.0 ? a * a / 2.0 - a * a * a * a / 12.0 : 5.0 / 12.0 + (2.0 / 3.0) * (a - 1.0);
         }
-        case ModeSat::Rect:   return 0.5 * (x * std::sqrt (x * x + EPS_R * EPS_R) + EPS_R * EPS_R * std::asinh (x / EPS_R)) - EPS_R * x;
+        case ModeSat::Rect:   return 0.5 * (x * std::sqrt (x * x + eps * eps) + eps * eps * std::asinh (x / eps)) - eps * x;
     }
     return 0.5 * x * x;
 }
@@ -91,29 +91,49 @@ class Exciter
 public:
     static constexpr int latence = 20;                       // échantillons de base, à déclarer à l'hôte
 
-    void prepare (double fs, Forme forme, double f0, double q, double gainDb, ModeSat mode_, SourceExc source_)
+    void prepare (double fs, Forme forme_, double f0_, double q, double gainDb, ModeSat mode_, SourceExc source_)
     {
         mode = mode_;
         source = source_;
+        forme = forme_;
+        f0 = f0_;
+        fsHz = fs;
+        tiltOn = false;
+        tiltLo.reset(); tiltHi.reset();
         sign = gainDb >= 0 ? 1.0 : -1.0;
         amount = std::pow (10.0, std::abs (gainDb) / 20.0) - 1.0;
         focus = source != SourceExc::Bande;
-        const double fsrc = std::max (f0 / courbes::harmoniqueDominant (mode), 60.0), qsrc = std::max (q, 2.0);
-        if (source == SourceExc::Auto) { nSrc = 2; src.set (zoneFilter (forme, fs, fsrc, qsrc)); src2.set (zoneFilter (forme, fs, fsrc, qsrc)); }
-        else                           { nSrc = 1; src.set (zoneFilter (forme, fs, f0, q)); }
-        ref1.set (zoneFilter (forme, fs, fsrc, qsrc));
-        ref2.set (zoneFilter (forme, fs, fsrc, qsrc));
-        const auto zc = zoneFilter (forme, fs, f0, q);
+        const double fsrc = std::max (f0_ / courbes::harmoniqueDominant (mode), 60.0), qsrc = std::max (q, 2.0);
+        if (source == SourceExc::Auto) { nSrc = 2; src.set (zoneFilter (forme_, fs, fsrc, qsrc)); src2.set (zoneFilter (forme_, fs, fsrc, qsrc)); }
+        else                           { nSrc = 1; src.set (zoneFilter (forme_, fs, f0_, q)); }
+        ref1.set (zoneFilter (forme_, fs, fsrc, qsrc));
+        ref2.set (zoneFilter (forme_, fs, fsrc, qsrc));
+        const auto zc = zoneFilter (forme_, fs, f0_, q);
         for (auto& o : out) o.set (zc);
         zb.set (zc);
-        aEnv = std::exp (-1.0 / (0.02 * fs));
+        aEnv = std::exp (-1.0 / (agcTau * fs));
         aNull = std::exp (-1.0 / (0.03 * fs));
         aNorm = std::exp (-1.0 / (0.2 * fs));
         rDc = 1.0 - 2.0 * kPi * 20.0 / fs;
         reset();
     }
 
-    void setDrive (double d) { drive = d; }                     // en direct, sans réinitialiser
+    void setDrive (double d)                                  // en direct, sans réinitialiser
+    {
+        drive = d;
+        epsR = courbes::EPS_R * (1.5 / d) * (1.5 / d);       // Rectifier : « Saturation » règle le coude (homogène en amplitude, le niveau n'y change rien)
+    }
+
+    // Tilt −1 … +1 (mode Bande seulement) : bascule de tonalité de la source avant la saturation ; en direct, l'état des filtres est conservé.
+    void setTilt (double t)
+    {
+        if (source != SourceExc::Bande) return;
+        if (std::abs (t) <= 1e-9 && ! tiltOn) return;
+        const double pv = forme == Forme::ShelfAigu ? std::min (0.4 * fsHz, f0 * 2.5) : forme == Forme::ShelfGrave ? std::max (40.0, f0 / 2.5) : f0;
+        tiltLo.set (rbjShelf (fsHz, pv, -0.5 * tiltDb * t, false));
+        tiltHi.set (rbjShelf (fsHz, pv, +0.5 * tiltDb * t, true));
+        tiltOn = true;
+    }
 
     void setGain (double gainDb)                              // en direct, sans réinitialiser
     {
@@ -138,9 +158,10 @@ public:
         // source
         double s0 = src.process (x);
         if (nSrc == 2) s0 = src2.process (s0);
-        // gain adaptatif (montée seulement, jusqu'à +24 dB)
+        if (tiltOn) s0 = tiltHi.process (tiltLo.process (s0));       // Tilt (mode Bande) avant l'AGC et la saturation
+        // gain adaptatif (AGC : 0,05 … +40 dB)
         env = (1.0 - aEnv) * std::abs (s0) + aEnv * env;
-        const double g = std::clamp (drive / std::max (env * (kPi / 2.0), 1e-9), 1.0, 15.848931924611136);
+        const double g = std::clamp (drive / std::max (env * (kPi / 2.0), 1e-9), agcGmin, agcGmax);
         // ×2 : v[2n] = Σ H_UP[2k]·sin[n−k], v[2n+1] = Σ H_UP[2k+1]·sin[n−k]
         hUp.push (s0 * g);
         double v0 = 0, v1 = 0;
@@ -188,14 +209,21 @@ private:
         double& xp = lin ? x1l : x1;
         const double dxv = v - xp;
         double r;
-        if (std::abs (dxv) < 1e-6) r = lin ? 0.5 * (v + xp) : courbes::f (mode, 0.5 * (v + xp));
+        if (std::abs (dxv) < 1e-6) r = lin ? 0.5 * (v + xp) : courbes::f (mode, 0.5 * (v + xp), epsR);
         else if (lin)              r = (0.5 * v * v - 0.5 * xp * xp) / dxv;
-        else                       r = (courbes::F (mode, v) - courbes::F (mode, xp)) / dxv;
+        else                       r = (courbes::F (mode, v, epsR) - courbes::F (mode, xp, epsR)) / dxv;
         xp = v;
         return r;
     }
 
     static constexpr double floorRatio = 0.05;
+    // AGC d'entrée : enveloppe 10 ms, gain de 0,05 à +40 dB (l'ancien plafond de +24 dB était atteint presque tout le temps : « Saturation » sans effet, delta pointu)
+    static constexpr double agcTau = 0.01, agcGmin = 0.05, agcGmax = 100.0, tiltDb = 9.0;
+    double epsR = courbes::EPS_R;
+    Forme forme = Forme::Cloche;
+    double f0 = 1000.0, fsHz = 48000.0;
+    bool tiltOn = false;
+    Biquad tiltLo, tiltHi;
     double drive = 1.5;                                        // niveau visé à l'entrée de la courbe : plus haut = plus saturé (réglage « Saturation »)
     ModeSat mode = ModeSat::Iron;
     SourceExc source = SourceExc::Auto;

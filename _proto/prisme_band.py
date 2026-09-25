@@ -46,7 +46,35 @@ def zone_filter(shape, fs, f0, q):
     return rbj_lowpass(fs, f0)
 
 
-def adapt_gain(s, fs, target, gmax_db=24.0, tau=0.02, tau_fast=None):
+# AGC d'entrée de l'Exciter (2026-09-25) : le plafond historique de +24 dB était atteint presque tout le temps sur les bandes médiums (réglage « Saturation » sans effet,
+# delta très pointu = crépitements) ; enveloppe plus rapide (10 ms), montée jusqu'à +40 dB, descente jusqu'à 0,05.
+AGC_TAU, AGC_GMIN, AGC_GMAX_DB = 0.01, 0.05, 40.0
+
+
+def rbj_shelf(fs, f0, gain_db, haut):
+    """Shelf RBJ (pente S = 1) : `haut` True = shelf aigu, False = shelf grave."""
+    A = 10.0 ** (gain_db / 40.0)
+    w0 = 2 * np.pi * f0 / fs
+    c, s_ = np.cos(w0), np.sin(w0)
+    al = s_ / 2.0 * np.sqrt((A + 1.0 / A) * (1.0 / 1.0 - 1.0) + 2.0)
+    t = 2.0 * np.sqrt(A) * al
+    if haut:
+        b = np.array([A * ((A + 1) + (A - 1) * c + t), -2 * A * ((A - 1) + (A + 1) * c), A * ((A + 1) + (A - 1) * c - t)])
+        a = np.array([(A + 1) - (A - 1) * c + t, 2 * ((A - 1) - (A + 1) * c), (A + 1) - (A - 1) * c - t])
+    else:
+        b = np.array([A * ((A + 1) - (A - 1) * c + t), 2 * A * ((A - 1) - (A + 1) * c), A * ((A + 1) - (A - 1) * c - t)])
+        a = np.array([(A + 1) + (A - 1) * c + t, -2 * ((A - 1) + (A + 1) * c), (A + 1) + (A - 1) * c - t])
+    return b / a[0], a / a[0]
+
+
+TILT_DB = 9.0        # pente totale (basses ↔ aigus) de l'Exciter en mode Bande pour un tilt de ±1
+
+
+def tilt_pivot(shape, f0, fs):
+    return min(0.4 * fs, f0 * 2.5) if shape == "highshelf" else max(40.0, f0 / 2.5) if shape == "lowshelf" else f0
+
+
+def adapt_gain(s, fs, target, gmax_db=AGC_GMAX_DB, tau=AGC_TAU, tau_fast=None, gmin=AGC_GMIN):
     """Gain montant seulement : ramène l'enveloppe crête estimée de s vers `target`.
 
     tau_fast : si donné, enveloppe = max(lente, rapide) -> attaque rapide, relâchement lent.
@@ -58,7 +86,7 @@ def adapt_gain(s, fs, target, gmax_db=24.0, tau=0.02, tau_fast=None):
     if tau_fast:
         b = np.exp(-1.0 / (tau_fast * fs))
         env = np.maximum(env, lfilter([1 - b], [1, -b], np.abs(s)) * (np.pi / 2))
-    return np.clip(target / np.maximum(env, 1e-9), 1.0, 10 ** (gmax_db / 20))
+    return np.clip(target / np.maximum(env, 1e-9), gmin, 10 ** (gmax_db / 20))
 
 
 def null_coef(y, s, fs, tau=0.03):

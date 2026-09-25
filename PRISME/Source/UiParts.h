@@ -120,10 +120,18 @@ private:
 class Seg : public juce::Component
 {
 public:
-    Seg (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramId, const juce::StringArray& names_, juce::Colour c)
-        : names (names_), colour (c), param (apvts.getParameter (paramId))
+    Seg (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramId, const juce::StringArray& names_, juce::Colour c, std::function<void()> onChange_ = {})
+        : names (names_), colour (c), param (apvts.getParameter (paramId)), onChange (std::move (onChange_))
     {
-        attachment = std::make_unique<juce::ParameterAttachment> (*param, [this] (float v) { index = juce::roundToInt (v); repaint(); });
+        index = juce::roundToInt (param->convertFrom0to1 (param->getValue()));
+        attachment = std::make_unique<juce::ParameterAttachment> (*param, [this] (float v)
+        {
+            const int nv = juce::roundToInt (v);
+            const bool changed = nv != index;
+            index = nv;
+            repaint();
+            if (changed && onChange) juce::MessageManager::callAsync ([fn = onChange] { fn(); });
+        });
         attachment->sendInitialUpdate();
     }
 
@@ -191,6 +199,7 @@ private:
     juce::StringArray names;
     juce::Colour colour;
     juce::RangedAudioParameter* param;
+    std::function<void()> onChange;
     int index = 0;
     std::unique_ptr<juce::ParameterAttachment> attachment;
 };

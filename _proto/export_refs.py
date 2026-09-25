@@ -71,13 +71,17 @@ with open(TAB, "w", encoding="utf-8") as f:
     f.write("}" + chr(10))
 ECFG = [("iron", "auto", "bell", 12000.0, 2.0, 5.0), ("iron", "auto", "highshelf", 9600.0, 0.71, 5.0), ("triode", "auto", "bell", 2500.0, 1.0, 6.0),
         ("diode", "band", "bell", 3000.0, 1.0, 5.0), ("classa", "auto", "lowshelf", 80.0, 0.71, 4.0), ("rect", "auto", "bell", 250.0, 1.0, 5.0),
-        ("iron", "band", "highshelf", 8000.0, 0.71, 6.0), ("iron", "auto", "bell", 5000.0, 1.5, -5.0)]
+        ("iron", "band", "highshelf", 8000.0, 0.71, 6.0), ("iron", "auto", "bell", 5000.0, 1.5, -5.0),
+        ("iron", "band", "bell", 3000.0, 1.0, 4.0, 1.5, 0.8), ("triode", "band", "lowshelf", 200.0, 0.71, 4.0, 3.0, -0.6), ("rect", "auto", "bell", 1000.0, 1.0, 5.0, 0.6, 0.0),
+        ("rect", "auto", "bell", 1000.0, 1.0, 5.0, 4.0, 0.0), ("classa", "auto", "highshelf", 6000.0, 0.71, 3.0, 4.0, 0.0), ("diode", "band", "highshelf", 5000.0, 0.71, 3.0, 0.5, 1.0)]
 for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)), (96000, "syn96", synth(96000))):
-    for i, (mo, so, sh, f0, q, g) in enumerate(ECFG):
+    for i, cfg in enumerate(ECFG):
+        mo, so, sh, f0, q, g = cfg[:6]
+        dr, tl = (cfg[6], cfg[7]) if len(cfg) > 6 else (1.5, 0.0)
         nom = f"exc_{nom_sig}_{i}"
-        y = exciter_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, mode=mo, source=so)
+        y = exciter_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, mode=mo, source=so, drive=dr, tilt=tl)
         dump(nom, sig, y)
-        man.append(f"exciter {nom} {fs} {sh} {f0} {q} {g} {mo} {so}")
+        man.append(f"exciter {nom} {fs} {sh} {f0} {q} {g} {mo} {so} {dr} {tl}")
 TCFG = [("bell", 3000.0, 0.7, -9.0, 0.5), ("bell", 632.0, 1.2, -4.0, 1.0), ("bell", 250.0, 0.71, 6.0, 0.2), ("highshelf", 9600.0, 0.71, -6.0, 0.5),
         ("lowshelf", 120.0, 0.71, -6.0, 0.8), ("bell", 8000.0, 2.0, -9.0, 0.0)]
 for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44", synth(44100)[:int(4 * 44100)]), (96000, "syn96", synth(96000)[:int(3 * 96000)])):

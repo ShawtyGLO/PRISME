@@ -80,7 +80,8 @@ int main (int argc, char** argv)
         {
             double g;
             std::string mo, so;
-            is >> g >> mo >> so;
+            double dr = 1.5, tl = 0.0;
+            is >> g >> mo >> so >> dr >> tl;
             const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
             ++total;
             if (xs.empty() || xs.size() != ref.size()) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
@@ -89,6 +90,8 @@ int main (int argc, char** argv)
             const ModeSat m = mo == "iron" ? ModeSat::Iron : mo == "triode" ? ModeSat::Triode : mo == "diode" ? ModeSat::Diode : mo == "classa" ? ModeSat::ClassA : ModeSat::Rect;
             Exciter ex;
             ex.prepare (fs, forme (sh), f0, q, g, m, so == "auto" ? SourceExc::Auto : SourceExc::Bande);
+            ex.setDrive (dr);
+            ex.setTilt (tl);
             for (size_t i = 0; i < xs.size(); ++i) e = std::max (e, std::abs (ex.process (xs[i]) - ref[i]));
             e /= std::max (crete, 1e-30);
             pireExc = std::max (pireExc, e);                 // tolérance −140 dB : la projection divise par une énergie proche de 1e-12 sur les passages quasi silencieux

@@ -36,6 +36,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         const auto n = "Bande " + juce::String (b + 1) + " ";
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "on"), 1 }, n + "active", true));
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "solo"), 1 }, n + U8 ("delta (écoute seule)"), false));
+        layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "tilt"), 1 }, n + "tilt (mode Bande)", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "drive"), 1 }, n + "saturation", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.54f));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "type"), 1 }, n + "type", typeNames(), defType[b]));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "forme"), 1 }, n + "forme", formeNames(), defForme[b]));
@@ -100,6 +101,7 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     static const prisme::ModeSat modes[5] = { prisme::ModeSat::Iron, prisme::ModeSat::Triode, prisme::ModeSat::Diode, prisme::ModeSat::ClassA, prisme::ModeSat::Rect };   // ordre de modeNames()
     sp.mode    = modes[juce::jlimit (0, 4, juce::roundToInt (raw (s, pid (b, "mode"))))];
     sp.source  = (prisme::SourceExc) juce::roundToInt (raw (s, pid (b, "source")));
+    sp.tilt    = raw (s, pid (b, "tilt"));
     sp.drive   = driveFromKnob (raw (s, pid (b, "drive")));
     sp.width   = raw (s, pid (b, "width"));
     sp.cible   = (prisme::Shape::Cible) juce::roundToInt (raw (s, pid (b, "cible")));

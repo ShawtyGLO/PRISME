@@ -73,6 +73,8 @@ private:
         std::atomic<float> gainTarget { 0.0f };
         std::atomic<double> driveTarget { 1.5 };
         double lastDrive = 1.5;
+        std::atomic<double> tiltTarget { 0.0 };
+        double lastTilt = 0.0;
         std::atomic<bool> needRebuild { false };
         // thread message
         prisme::BandeSpec msgStruct;

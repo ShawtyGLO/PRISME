@@ -30,6 +30,25 @@ inline BiquadCoefs rbjHighpass (double fs, double f0, double q = 0.7071)
     return { (1.0 + c) / 2.0 / a0, -(1.0 + c) / a0, (1.0 + c) / 2.0 / a0, -2.0 * c / a0, (1.0 - al) / a0 };
 }
 
+// Shelf RBJ (pente S = 1) : haut = true → shelf aigu. Mêmes formules que `rbj_shelf` du prototype.
+inline BiquadCoefs rbjShelf (double fs, double f0, double gainDb, bool haut)
+{
+    const double A = std::pow (10.0, gainDb / 40.0), w0 = 2.0 * kPi * f0 / fs, c = std::cos (w0), s = std::sin (w0);
+    const double al = s / 2.0 * std::sqrt ((A + 1.0 / A) * (1.0 / 1.0 - 1.0) + 2.0), t = 2.0 * std::sqrt (A) * al;
+    double b0, b1, b2, a0, a1, a2;
+    if (haut)
+    {
+        b0 = A * ((A + 1) + (A - 1) * c + t);  b1 = -2 * A * ((A - 1) + (A + 1) * c);  b2 = A * ((A + 1) + (A - 1) * c - t);
+        a0 = (A + 1) - (A - 1) * c + t;        a1 = 2 * ((A - 1) - (A + 1) * c);       a2 = (A + 1) - (A - 1) * c - t;
+    }
+    else
+    {
+        b0 = A * ((A + 1) - (A - 1) * c + t);  b1 = 2 * A * ((A - 1) - (A + 1) * c);   b2 = A * ((A + 1) - (A - 1) * c - t);
+        a0 = (A + 1) + (A - 1) * c + t;        a1 = -2 * ((A - 1) + (A + 1) * c);      a2 = (A + 1) + (A - 1) * c - t;
+    }
+    return { b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0 };
+}
+
 // Forme de la zone d'une bande : cloche → passe-bande 0 dB ; shelf aigu → passe-haut ; shelf grave → passe-bas (le Q des shelfs est fixe).
 enum class Forme { Cloche, ShelfGrave, ShelfAigu };
 

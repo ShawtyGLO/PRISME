@@ -374,11 +374,12 @@ void BandCard::rebuild (int b)
     };
     auto addSeg = [&] (const char* id, const juce::String& title, const juce::StringArray& names)
     {
-        typeSegs.push_back (std::make_unique<Seg> (ap, pp::pid (b, id), names, colour));
+        typeSegs.push_back (std::make_unique<Seg> (ap, pp::pid (b, id), names, colour, [safe = juce::Component::SafePointer<BandCard> (this)] { if (safe != nullptr) safe->rebuild (safe->band); }));
         typeSegTitles.push_back (title);
         addAndMakeVisible (*typeSegs.back());
     };
-    if (type == 0)      { addSeg ("mode", "MODE", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); addKnob ("drive", "Saturation", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; }); }
+    if (type == 0)      { addSeg ("mode", "MODE", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); addKnob ("drive", "Saturation", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
+                          if (juce::roundToInt (pp::raw (proc.apvts, pp::pid (b, "source"))) == 1) addKnob ("tilt", "Tilt", [] (double v) { return (v > 0 ? juce::String ("+") : juce::String()) + juce::String (v, 2); }); }
     else if (type == 1) { addKnob ("width", "Largeur", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; }); }
     else if (type == 2)
     {
@@ -392,7 +393,7 @@ void BandCard::rebuild (int b)
         addKnob ("release", U8 ("Relâchement"), [] (double v) { return juce::String (juce::roundToInt (v)) + " ms"; });
     }
     juce::String notes[4] = {
-        U8 ("Ajoute des harmoniques dans la zone (gain de 0 à +15 dB). Saturation : de doux à très saturé."),
+        U8 ("Ajoute des harmoniques dans la zone (gain de 0 à +15 dB). Saturation : de doux à très saturé. En mode Bande, Tilt penche la source : plus de saturation dans les graves (−) ou les aigus (+)."),
         U8 ("Atténue les résonances qui ressortent dans la zone (gain −) ou accentue les pics déjà forts (gain +). Largeur : de fin à large."),
         U8 ("Agit sur les transitoires ou sur le sustain de la bande, dans les deux sens. Durée : combien de temps dure l'effet après une attaque."),
         U8 ("Relève ce qui est faible dans la zone (gain +) ou l'abaisse (gain −). Amount : plus il monte, plus de matière est concernée. Protection du souffle automatique.") };
@@ -437,7 +438,8 @@ void BandCard::resized()
         }
         int maxW = 0;
         for (auto& sg : typeSegs) maxW = juce::jmax (maxW, juce::jmin (w3, sg->preferredWidth()));
-        for (auto& k : typeKnobs) k->setBounds (x3 + maxW + 24, yTop + 24, Knob::preferredWidth(), Knob::preferredHeight());
+        int kx2 = x3 + maxW + 24;
+        for (auto& k : typeKnobs) { k->setBounds (kx2, yTop + 24, Knob::preferredWidth(), Knob::preferredHeight()); kx2 += Knob::preferredWidth() + 8; }
     }
     else
     {

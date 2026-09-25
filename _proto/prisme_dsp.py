@@ -68,6 +68,13 @@ def rect_F(x):
     return 0.5 * (x * np.sqrt(x * x + _EPS_R ** 2) + _EPS_R ** 2 * np.arcsinh(x / _EPS_R)) - _EPS_R * x
 
 
+def rect_curves(eps):
+    """Rectifier à lissage du coude variable : eps petit = coude franc (riche), grand = doux (surtout H2)."""
+    f = lambda x: np.sqrt(x * x + eps ** 2) - eps
+    F = lambda x: 0.5 * (x * np.sqrt(x * x + eps ** 2) + eps ** 2 * np.arcsinh(x / eps)) - eps * x
+    return f, F
+
+
 # nom -> (f, F1, sortie_contient_deja_les_harmoniques_seules)
 MODES = {
     "triode": (triode_f, triode_F, False),

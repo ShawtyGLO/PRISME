@@ -9,8 +9,8 @@ de D_OS : sortie du plugin = entrée retardée de D_OS + Σ deltas. Latence à d
 """
 import numpy as np
 from scipy.signal import lfilter, firwin
-from prisme_dsp import MODES
-from prisme_band import zone_filter, H_DOMINANT
+from prisme_dsp import MODES, rect_curves
+from prisme_band import zone_filter, H_DOMINANT, AGC_TAU, AGC_GMIN, AGC_GMAX_DB, rbj_shelf, tilt_pivot, TILT_DB
 
 H0 = firwin(41, 0.5, window=("kaiser", 5.0))          # filtre de `resample_poly(x, 2, 1)` et `resample_poly(x, 1, 2)`
 H_UP, H_DN = 2.0 * H0, H0
@@ -18,9 +18,11 @@ D_OS = 20                                              # (40 échantillons à ×
 EPS_ADAA = 1e-6
 
 
-def _courbe(mode):
+def _courbe(mode, drive=1.5):
     if mode == "lin":
         return (lambda v: v), (lambda v: 0.5 * v * v)
+    if mode == "rect":                       # le Rectifier est homogène (|x|) : « Saturation » agit sur le coude, eps ∝ 1/drive² (0,05 à drive 1,5)
+        return rect_curves(0.05 * (1.5 / drive) ** 2)
     f, F, _ = MODES[mode]
     return f, F
 
@@ -54,18 +56,24 @@ class ExciterStream:
     latence = D_OS
 
     def __init__(self, fs, shape="bell", f0=12000.0, q=2.0, gain_db=5.0, mode="iron", source="auto", drive=1.5,
-                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03, env_tau=0.02, gmin=1.0, gmax_db=24.0):
+                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03, env_tau=AGC_TAU, gmin=AGC_GMIN, gmax_db=AGC_GMAX_DB, tilt=0.0):
         self.fs, self.mode, self.source, self.drive = fs, mode, source, drive
         self.sign, self.amount = (1.0 if gain_db >= 0 else -1.0), 10.0 ** (abs(gain_db) / 20.0) - 1.0
         self.floor_ratio, self.out_sections = floor_ratio, out_sections
         self.focus = source != "band"
-        self.courbe, self.courbe_lin = _courbe(mode), _courbe("lin")
+        self.courbe, self.courbe_lin = _courbe(mode, drive), _courbe("lin")
         if source == "auto":
             self.zf = zone_filter(shape, fs, max(f0 / H_DOMINANT[mode], 60.0), max(q, src_q))
             self.z_src = [np.zeros(2), np.zeros(2)]
         else:                                                              # « Bande »
             self.zf = zone_filter(shape, fs, f0, q)
             self.z_src = [np.zeros(2)]
+        # Tilt (mode Bande seulement) : bascule de tonalité de la source AVANT la saturation → décide quelle partie de la zone sature le plus (le « profil »)
+        self.tilt_f = None
+        if source != "auto" and abs(tilt) > 1e-9:
+            pv = tilt_pivot(shape, f0, fs)
+            self.tilt_f = [rbj_shelf(fs, pv, -0.5 * TILT_DB * tilt, False), rbj_shelf(fs, pv, +0.5 * TILT_DB * tilt, True)]
+            self.z_tilt = [np.zeros(2), np.zeros(2)]
         self.count = 0                                                     # échantillons de base déjà traités
         self.a_env = np.exp(-1.0 / (env_tau * fs))
         self.gmin, self.gmax = gmin, 10.0 ** (gmax_db / 20.0)
@@ -92,7 +100,10 @@ class ExciterStream:
         s0 = x
         for i in range(len(self.z_src)):
             s0, self.z_src[i] = lfilter(*self.zf, s0, zi=self.z_src[i])
-        # gain adaptatif (montée seulement, jusqu'à +24 dB)
+        if self.tilt_f is not None:
+            for i in range(2):
+                s0, self.z_tilt[i] = lfilter(*self.tilt_f[i], s0, zi=self.z_tilt[i])
+        # gain adaptatif (AGC : 0,05 … +40 dB)
         env, self.z_env = _un_pole(self.a_env, np.abs(s0), self.z_env)
         g = np.clip(self.drive / np.maximum(env * (np.pi / 2), 1e-9), self.gmin, self.gmax)
         sin = s0 * g
