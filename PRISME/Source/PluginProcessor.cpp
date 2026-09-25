@@ -124,6 +124,10 @@ void PrismeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     const int cap = juce::jmax (samplesPerBlock, 4096);
     bufL.assign ((size_t) cap, 0.0);
     bufR.assign ((size_t) cap, 0.0);
+    for (auto& w : wetTmp) w.assign ((size_t) cap, 0.0f);
+    for (auto& w : wet) w.f.reset();
+    bypassMix.reset (sampleRate, 0.01);
+    bypassMix.setCurrentAndTargetValue (prismeParams::raw (apvts, "bypass") > 0.5f ? 0.0f : 1.0f);
     ringCap = (std::int64_t) ((histSeconds + 2.5) * sampleRate);
     ringL.assign ((size_t) ringCap, 0.0);
     ringR.assign ((size_t) ringCap, 0.0);
@@ -180,6 +184,7 @@ void PrismeProcessor::syncBands (bool immediate)
         const auto spec = prismeParams::readSpec (apvts, b);
         auto structure = spec;
         structure.gainDb = 0.0;
+        structure.drive = 0.0;                                                 // gain et saturation se règlent en direct : pas de reconstruction
 
         if (immediate)
         {
@@ -194,6 +199,8 @@ void PrismeProcessor::syncBands (bool immediate)
             }
             s.lastGain = (float) spec.gainDb;
             s.gainTarget.store ((float) spec.gainDb);
+            s.driveTarget.store (spec.drive);
+            s.lastDrive = spec.drive;
             s.msgStruct = structure;
             s.msgAlive = spec.actif();
             s.zeroSince = 0;
@@ -219,6 +226,7 @@ void PrismeProcessor::syncBands (bool immediate)
             s.zeroSince = 0;
 
         s.gainTarget.store ((float) spec.gainDb);
+        s.driveTarget.store (spec.drive);
         if (! s.msgAlive || structure != s.msgStruct || s.needRebuild.exchange (false))
         {
             builder->request (b, spec);
@@ -239,6 +247,11 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float* chR = nCh > 1 ? buffer.getWritePointer (1) : nullptr;
     const int cap = (int) bufL.size();
     const bool delta = prismeParams::raw (apvts, "delta") > 0.5f;
+    bool solo[prismeParams::nBands];
+    bool anySolo = false;
+    for (int b = 0; b < prismeParams::nBands; ++b) { solo[b] = prismeParams::raw (apvts, prismeParams::pid (b, "solo")) > 0.5f; anySolo |= solo[b]; }
+    bypassMix.setTargetValue (prismeParams::raw (apvts, "bypass") > 0.5f ? 0.0f : 1.0f);
+    const bool wetOn = analyserOn.load();
     outGain.setTargetValue (juce::Decibels::decibelsToGain (prismeParams::raw (apvts, "output")));
 
     for (int start = 0; start < total; start += cap)
@@ -291,6 +304,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                     if (s.warmConsumed == c0 && ! s.old)
                     {
                         s.warm->setGain (s.gainTarget.load());
+                        s.warm->setDrive (s.driveTarget.load());
+                        s.lastDrive = s.driveTarget.load();
                         s.old = std::move (s.cur);
                         s.cur = std::move (s.warm);
                         s.fadePos = 0;
@@ -300,6 +315,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
             const float g = s.gainTarget.load();                              // gain en direct
             if (s.cur && g != s.lastGain) { s.cur->setGain (g); s.lastGain = g; }
+            const double dv = s.driveTarget.load();
+            if (s.cur && dv != s.lastDrive) { s.cur->setDrive (dv); s.lastDrive = dv; }
         }
 
         // ---- entrée : anneau d'historique + conversion en double ----
@@ -318,30 +335,44 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         {
             const double L = bufL[(size_t) i], R = bufR[(size_t) i];
             const double dryL = secL.push (L), dryR = secR.push (R);
-            double sumL = 0.0, sumR = 0.0;
-            for (auto& s : slots)
+            double sumL = 0.0, sumR = 0.0, soloL = 0.0, soloR = 0.0;
+            for (size_t si = 0; si < slots.size(); ++si)
             {
-                if (! s.cur && ! s.old) continue;
-                double cL = 0, cR = 0, oL = 0, oR = 0;
+                auto& s = slots[si];
+                if (! s.cur && ! s.old) { if (wetOn) wetTmp[si][(size_t) i] = 0.0f; continue; }
+                double cL = 0, cR = 0, oL = 0, oR = 0, dL, dR;
                 if (s.cur) s.cur->process (L, R, cL, cR);
                 if (s.fadePos < fadeLen)
                 {
                     if (s.old) s.old->process (L, R, oL, oR);
                     const double a = (double) s.fadePos / (double) fadeLen;
-                    sumL += oL * (1.0 - a) + cL * a;
-                    sumR += oR * (1.0 - a) + cR * a;
+                    dL = oL * (1.0 - a) + cL * a;
+                    dR = oR * (1.0 - a) + cR * a;
                     ++s.fadePos;
                 }
-                else
-                {
-                    sumL += cL;
-                    sumR += cR;
-                }
+                else { dL = cL; dR = cR; }
+                sumL += dL; sumR += dR;
+                if (solo[si]) { soloL += dL; soloR += dR; }
+                if (wetOn) wetTmp[si][(size_t) i] = (float) (0.5 * (dL + dR));
             }
             const double g = (double) outGain.getNextValue();
-            bufL[(size_t) i] = (delta ? sumL : dryL + sumL) * g;
-            bufR[(size_t) i] = (delta ? sumR : dryR + sumR) * g;
+            const double bm = (double) bypassMix.getNextValue();
+            const double wL = anySolo ? soloL : (delta ? sumL : dryL + sumL), wR = anySolo ? soloR : (delta ? sumR : dryR + sumR);
+            bufL[(size_t) i] = (bm * wL + (1.0 - bm) * dryL) * g;
+            bufR[(size_t) i] = (bm * wR + (1.0 - bm) * dryR) * g;
         }
+
+        if (wetOn)
+            for (size_t b = 0; b < slots.size(); ++b)
+            {
+                const int w = juce::jmin (n, wet[b].f.getFreeSpace());
+                if (w <= 0) continue;
+                int s1, n1, s2, n2;
+                wet[b].f.prepareToWrite (w, s1, n1, s2, n2);
+                for (int i = 0; i < n1; ++i) wet[b].buf[(size_t) (s1 + i)] = wetTmp[b][(size_t) i];
+                for (int i = 0; i < n2; ++i) wet[b].buf[(size_t) (s2 + i)] = wetTmp[b][(size_t) (n1 + i)];
+                wet[b].f.finishedWrite (w);
+            }
 
         for (int i = 0; i < n; ++i)
         {
@@ -360,6 +391,19 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             fifo.finishedWrite (w);
         }
     }
+}
+
+int PrismeProcessor::readWet (int band, float* dest, int maxCount)
+{
+    auto& w = wet[(size_t) band];
+    const int r = juce::jmin (maxCount, w.f.getNumReady());
+    if (r <= 0) return 0;
+    int s1, n1, s2, n2;
+    w.f.prepareToRead (r, s1, n1, s2, n2);
+    for (int i = 0; i < n1; ++i) dest[i] = w.buf[(size_t) (s1 + i)];
+    for (int i = 0; i < n2; ++i) dest[n1 + i] = w.buf[(size_t) (s2 + i)];
+    w.f.finishedRead (r);
+    return r;
 }
 
 int PrismeProcessor::readAnalyser (float* dest, int maxCount)

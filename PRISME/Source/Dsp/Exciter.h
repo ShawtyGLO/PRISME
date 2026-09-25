@@ -113,6 +113,8 @@ public:
         reset();
     }
 
+    void setDrive (double d) { drive = d; }                     // en direct, sans réinitialiser
+
     void setGain (double gainDb)                              // en direct, sans réinitialiser
     {
         sign = gainDb >= 0 ? 1.0 : -1.0;
@@ -193,7 +195,8 @@ private:
         return r;
     }
 
-    static constexpr double drive = 1.5, floorRatio = 0.05;
+    static constexpr double floorRatio = 0.05;
+    double drive = 1.5;                                        // niveau visé à l'entrée de la courbe : plus haut = plus saturé (réglage « Saturation »)
     ModeSat mode = ModeSat::Iron;
     SourceExc source = SourceExc::Auto;
     Biquad src, src2, ref1, ref2, zb;

@@ -51,6 +51,10 @@ public:
     // Analyseur de spectre : le thread audio écrit la sortie (mono), l'éditeur lit.
     int readAnalyser (float* dest, int maxCount);
     double getSampleRateHz() const { return fsHz.load(); }
+    // Spectres des deltas de chaque bande (signal « wet » de la couleur du traitement) : lecture par l'éditeur ; `setAnalyserActive` évite le travail éditeur fermé.
+    int readWet (int band, float* dest, int maxCount);
+    void setAnalyserActive (bool b) { analyserOn.store (b); }
+    juce::AudioProcessorParameter* getBypassParameter() const override { return apvts.getParameter ("bypass"); }
 
 private:
     struct Slot
@@ -67,6 +71,8 @@ private:
         int fadePos = 0;
         float lastGain = 0.0f;
         std::atomic<float> gainTarget { 0.0f };
+        std::atomic<double> driveTarget { 1.5 };
+        double lastDrive = 1.5;
         std::atomic<bool> needRebuild { false };
         // thread message
         prisme::BandeSpec msgStruct;
@@ -92,6 +98,11 @@ private:
     juce::AbstractFifo fifo { 8192 };
     std::vector<float> fifoBuf = std::vector<float> (8192, 0.0f);
     std::vector<double> bufL, bufR;
+    struct WetFifo { juce::AbstractFifo f { 8192 }; std::vector<float> buf = std::vector<float> (8192, 0.0f); };
+    std::array<WetFifo, prismeParams::nBands> wet;
+    std::array<std::vector<float>, prismeParams::nBands> wetTmp;
+    std::atomic<bool> analyserOn { false };
+    juce::SmoothedValue<float> bypassMix;
 
     // Historique de l'entrée (anneau) : préchauffage des nouvelles bandes.
     std::vector<double> ringL, ringR;

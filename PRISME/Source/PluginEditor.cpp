@@ -10,6 +10,7 @@ static constexpr float kFMin = 20.0f, kFMax = 20000.0f, kGMax = 15.0f;
 CurveDisplay::CurveDisplay (PrismeProcessor& p, std::function<int()> getSel, std::function<void (int)> setSel)
     : proc (p), selGet (std::move (getSel)), selSet (std::move (setSel))
 {
+    proc.setAnalyserActive (true);
     startTimerHz (30);
 }
 
@@ -18,11 +19,11 @@ float CurveDisplay::fOf (float x) const { return kFMin * std::pow (kFMax / kFMin
 float CurveDisplay::yOf (float g) const { const float h = (float) getHeight(); return h / 2.0f - (g / kGMax) * (h / 2.0f - 16.0f); }
 float CurveDisplay::gOf (float y) const { const float h = (float) getHeight(); return (h / 2.0f - y) / (h / 2.0f - 16.0f) * kGMax; }
 
-// Allure indicative de la correction (0 cloche, 1 shelf grave, 2 shelf aigu) : la vraie réponse dépend du type de traitement.
+// Allure indicative de la correction (0 shelf grave, 1 cloche, 2 shelf aigu) : la vraie réponse dépend du type de traitement.
 float CurveDisplay::response (int shape, float f0, float q, float gain, float f)
 {
     const float oct = std::log2 (f / f0), s = 1.0f / juce::jmax (0.25f, q);
-    if (shape == 0) { const float u = oct / (0.55f * s + 0.05f); return gain * std::exp (-u * u); }
+    if (shape == 1) { const float u = oct / (0.55f * s + 0.05f); return gain * std::exp (-u * u); }
     const float k = 1.0f / (1.0f + std::exp (-oct * 3.2f / (s * 0.9f + 0.2f)));
     return gain * (shape == 2 ? k : 1.0f - k);
 }
@@ -59,7 +60,30 @@ void CurveDisplay::timerCallback()
             specDb[(size_t) i] = juce::jmax (db, specDb[(size_t) i] - 1.5f);
         }
     }
-    if (showSpec) repaint();
+    for (int b = 0; b < pp::nBands; ++b)
+    {
+        auto& a = wetAna[(size_t) b];
+        while ((got = proc.readWet (b, tmp, 2048)) > 0)
+        {
+            for (int i = 0; i < got; ++i) { a.ring[(size_t) a.pos] = tmp[i]; a.pos = (a.pos + 1) & 2047; }
+            a.since += got;
+        }
+        if (a.since >= 1024) { a.since = 0; runFft (a); }
+    }
+    repaint();                                                       // toujours : l'etat des bandes (active / coupee, gain) doit se voir meme sans spectre
+}
+
+void CurveDisplay::runFft (Ana& a)
+{
+    for (int i = 0; i < 2048; ++i) fftData[(size_t) i] = a.ring[(size_t) ((a.pos + i) & 2047)];
+    std::fill (fftData.begin() + 2048, fftData.end(), 0.0f);
+    window.multiplyWithWindowingTable (fftData.data(), 2048);
+    fft.performFrequencyOnlyForwardTransform (fftData.data());
+    for (int i = 0; i < 1024; ++i)
+    {
+        const float db = 20.0f * std::log10 (fftData[(size_t) i] / 512.0f + 1e-9f);
+        a.spec[(size_t) i] = juce::jmax (db, a.spec[(size_t) i] - 1.5f);
+    }
 }
 
 void CurveDisplay::paint (juce::Graphics& g)
@@ -110,6 +134,29 @@ void CurveDisplay::paint (juce::Graphics& g)
         sp.closeSubPath();
         g.setColour (juce::Colour (0x1a8ca0be));
         g.fillPath (sp);
+    }
+
+    {   // signal WET de chaque bande, a la couleur du traitement (le rendu bouge dans la courbe : pas la courbe)
+        const double fs = juce::jmax (8000.0, proc.getSampleRateHz());
+        for (int b = 0; b < pp::nBands; ++b)
+        {
+            if (pp::raw (proc.apvts, pp::pid (b, "on")) < 0.5f || pp::raw (proc.apvts, pp::pid (b, "gain")) == 0.0f) continue;
+            const auto& a = wetAna[(size_t) b];
+            juce::Path wp;
+            wp.startNewSubPath (0.0f, h);
+            for (int x = 0; x <= (int) w; x += 2)
+            {
+                const float bin = juce::jlimit (0.0f, 1022.0f, fOf ((float) x) / (float) fs * 2048.0f);
+                const int i0 = (int) bin;
+                const float db = a.spec[(size_t) i0] + (a.spec[(size_t) i0 + 1] - a.spec[(size_t) i0]) * (bin - (float) i0);
+                wp.lineTo ((float) x, h - juce::jlimit (0.0f, 1.0f, (db + 100.0f) / 100.0f) * h * 0.85f);
+            }
+            wp.lineTo (w, h);
+            wp.closeSubPath();
+            const auto c = col::forType (juce::roundToInt (pp::raw (proc.apvts, pp::pid (b, "type"))));
+            g.setColour (c.withAlpha (b == selGet() ? 0.55f : 0.32f));
+            g.fillPath (wp);
+        }
     }
 
     const int sel = selGet();
@@ -264,6 +311,18 @@ void BandTabs::paint (juce::Graphics& g)
     }
 }
 
+void BandTabs::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    for (int i = 0; i < pp::nBands; ++i)
+        if (cell (i).contains (e.getPosition()))
+            if (auto* p = proc.apvts.getParameter (pp::pid (i, "on")))
+            {
+                p->beginChangeGesture();
+                p->setValueNotifyingHost (p->getValue() > 0.5f ? 0.0f : 1.0f);
+                p->endChangeGesture();
+            }
+}
+
 void BandTabs::mouseDown (const juce::MouseEvent& e)
 {
     for (int i = 0; i < pp::nBands; ++i)
@@ -284,8 +343,8 @@ void BandCard::rebuild (int b)
 
     types = std::make_unique<TypeButtons> (ap, pp::pid (b, "type"), [safe = juce::Component::SafePointer<BandCard> (this)] { if (safe != nullptr) safe->rebuild (safe->band); });
     addAndMakeVisible (*types);
-    onButton = std::make_unique<PillButton> (U8 ("Bande coupée"), "Bande active");
-    onAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (ap, pp::pid (b, "on"), *onButton);
+    onButton = std::make_unique<PillButton> ("Delta", "Delta");
+    onAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (ap, pp::pid (b, "solo"), *onButton);
     addAndMakeVisible (*onButton);
     forme = std::make_unique<Seg> (ap, pp::pid (b, "forme"), pp::formeNames(), colour);
     addAndMakeVisible (*forme);
@@ -313,7 +372,7 @@ void BandCard::rebuild (int b)
         typeSegTitles.push_back (title);
         addAndMakeVisible (*typeSegs.back());
     };
-    if (type == 0)      { addSeg ("mode", "MODE", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); }
+    if (type == 0)      { addSeg ("mode", "MODE", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); addKnob ("drive", "Saturation", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; }); }
     else if (type == 1) { addKnob ("width", "Largeur", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; }); }
     else if (type == 2)
     {
@@ -370,6 +429,9 @@ void BandCard::resized()
             typeSegs[i]->setBounds (x3, cy + 20, juce::jmin (w3, typeSegs[i]->preferredWidth()), 30);
             cy += 56;
         }
+        int maxW = 0;
+        for (auto& sg : typeSegs) maxW = juce::jmax (maxW, juce::jmin (w3, sg->preferredWidth()));
+        for (auto& k : typeKnobs) k->setBounds (x3 + maxW + 24, yTop + 24, Knob::preferredWidth(), Knob::preferredHeight());
     }
     else
     {
@@ -410,11 +472,9 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
       tabs (p, [this] { return sel; }, [this] (int b) { select (b); }),
       card (p)
 {
-    addAndMakeVisible (display);
-    addAndMakeVisible (tabs);
-    addAndMakeVisible (card);
-    addAndMakeVisible (deltaBtn);
-    addAndMakeVisible (specBtn);
+    addAndMakeVisible (content);
+    for (auto* c : std::initializer_list<juce::Component*> { &display, &tabs, &card, &deltaBtn, &specBtn, &outSlider })
+        content.addAndMakeVisible (c);
     deltaAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "delta", deltaBtn);
     specBtn.setToggleState (true, juce::dontSendNotification);
     specBtn.onClick = [this] { display.setShowSpectrum (specBtn.getToggleState()); };
@@ -426,13 +486,32 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
     outSlider.setColour (juce::Slider::thumbColourId, col::txt);
     outSlider.setColour (juce::Slider::textBoxTextColourId, col::txt);
     outSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    addAndMakeVisible (outSlider);
     outAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, "output", outSlider);
 
+    // Le titre « P R I S M E » est un bouton de bypass cache (clic = bypass / retour) ; il s'assombrit quand le bypass est actif.
+    content.onPaint = [this] (juce::Graphics& g)
+    {
+        const bool byp = pp::raw (proc.apvts, "bypass") > 0.5f;
+        g.setColour (byp ? juce::Colour (0xff5a606b) : col::txt);
+        g.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
+        g.drawText ("P R I S M E", 16, 14, 240, 30, juce::Justification::left);
+    };
+    content.onMouseDown = [this] (const juce::MouseEvent& e)
+    {
+        if (juce::Rectangle<int> (10, 8, 190, 42).contains (e.getPosition()))
+            if (auto* b = proc.apvts.getParameter ("bypass"))
+            {
+                b->beginChangeGesture();
+                b->setValueNotifyingHost (b->getValue() > 0.5f ? 0.0f : 1.0f);
+                b->endChangeGesture();
+            }
+    };
+
     card.rebuild (sel);
-    setSize (1120, 780);
     setResizable (true, true);
-    setResizeLimits (900, 700, 1800, 1200);
+    getConstrainer()->setFixedAspectRatio ((double) baseW / (double) baseH);
+    setResizeLimits (560, 390, 2240, 1560);
+    setSize (baseW, baseH);
     startTimerHz (15);
 }
 
@@ -453,29 +532,18 @@ void PrismeEditor::select (int b)
 void PrismeEditor::timerCallback()
 {
     tabs.repaint();
+    content.repaint (0, 0, 260, 50);
 }
 
 void PrismeEditor::paint (juce::Graphics& g)
 {
     g.fillAll (col::bg);
-    g.setColour (col::txt);
-    g.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
-    g.drawText ("P R I S M E", 16, 14, 240, 30, juce::Justification::left);
-    const double fs = juce::jmax (8000.0, proc.getSampleRateHz());
-    const auto pill = juce::Rectangle<float> (200.0f, 16.0f, 230.0f, 26.0f);
-    g.setColour (col::panel);
-    g.fillRoundedRectangle (pill, 13.0f);
-    g.setColour (col::line);
-    g.drawRoundedRectangle (pill.reduced (0.5f), 13.0f, 1.0f);
-    g.setColour (col::mut);
-    g.setFont (12.0f);
-    g.drawText (U8 ("Latence ") + juce::String (prisme::Engine::latence) + U8 (" éch. · ") + juce::String (prisme::Engine::latence / fs * 1000.0, 2) + " ms",
-                pill.toNearestInt(), juce::Justification::centred);
 }
 
-void PrismeEditor::resized()
+void PrismeEditor::layoutContent()
 {
-    auto a = getLocalBounds().reduced (16);
+    content.setBounds (0, 0, baseW, baseH);
+    auto a = juce::Rectangle<int> (0, 0, baseW, baseH).reduced (16);
     auto header = a.removeFromTop (44);
     outSlider.setBounds (header.removeFromRight (190).withTrimmedTop (10).withHeight (26));
     header.removeFromRight (8);
@@ -489,4 +557,10 @@ void PrismeEditor::resized()
     tabs.setBounds (a.removeFromBottom (tabsH));
     a.removeFromBottom (10);
     display.setBounds (a);
+}
+
+void PrismeEditor::resized()
+{
+    layoutContent();
+    content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) baseW));
 }

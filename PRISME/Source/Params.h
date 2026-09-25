@@ -15,7 +15,7 @@ inline juce::StringArray sa (std::initializer_list<juce::String> l) { juce::Stri
 inline juce::String pid (int band, const char* name) { return "b" + juce::String (band + 1) + "_" + name; }
 
 inline juce::StringArray typeNames()   { return sa ({ "Exciter", "Tame", "Shape", "Lift" }); }
-inline juce::StringArray formeNames()  { return sa ({ "Cloche", "Shelf grave", "Shelf aigu" }); }
+inline juce::StringArray formeNames()  { return sa ({ "Shelf grave", "Cloche", "Shelf aigu" }); }
 inline juce::StringArray canalNames()  { return sa ({ U8 ("Stéréo"), "Mid", "Side", "L", "R" }); }
 inline juce::StringArray modeNames()   { return sa ({ "Iron", "Triode", "Diode", "Class-A", "Rectifier" }); }
 inline juce::StringArray sourceNames() { return sa ({ "Auto", "Bande" }); }
@@ -27,7 +27,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     const int    defType[nBands]  = { 0, 3, 1, 2, 0 };                 // Exciter, Lift, Tame, Shape, Exciter
-    const int    defForme[nBands] = { 1, 0, 0, 0, 2 };                 // shelf grave, cloche ×3, shelf aigu
+    const int    defForme[nBands] = { 0, 1, 1, 1, 2 };                 // shelf grave, cloche ×3, shelf aigu (ordre : Shelf grave | Cloche | Shelf aigu)
     const float  defFreq[nBands]  = { 42.0f, 164.0f, 632.0f, 2800.0f, 9600.0f };
     const float  defQ[nBands]     = { 0.71f, 0.71f, 1.2f, 0.9f, 0.71f };
 
@@ -35,6 +35,8 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     {
         const auto n = "Bande " + juce::String (b + 1) + " ";
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "on"), 1 }, n + "active", true));
+        layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "solo"), 1 }, n + U8 ("delta (écoute seule)"), false));
+        layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "drive"), 1 }, n + "saturation", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.54f));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "type"), 1 }, n + "type", typeNames(), defType[b]));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "forme"), 1 }, n + "forme", formeNames(), defForme[b]));
 
@@ -60,9 +62,13 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "release"), 1 }, n + U8 ("relâchement"), rr, 150.0f));
     }
     layout.add (std::make_unique<juce::AudioParameterBool>  (P { "delta", 1 }, "Delta", false));
+    layout.add (std::make_unique<juce::AudioParameterBool>  (P { "bypass", 1 }, "Bypass", false));
     layout.add (std::make_unique<juce::AudioParameterFloat> (P { "output", 1 }, "Sortie", juce::NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f));
     return layout;
 }
+
+// Réglage « Saturation » 0…1 → niveau visé à l'entrée de la courbe : 0,3 (doux) … 6 (très saturé), géométrique ; 0,54 ≈ 1,5 = valeur historique.
+inline double driveFromKnob (float x) { return 0.3 * std::pow (20.0, (double) x); }
 
 inline float raw (juce::AudioProcessorValueTreeState& s, const juce::String& id) { return s.getRawParameterValue (id)->load(); }
 
@@ -72,7 +78,7 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     sp.on      = raw (s, pid (b, "on")) > 0.5f;
     sp.type    = (prisme::TypeBande) juce::roundToInt (raw (s, pid (b, "type")));
     const int fo = juce::roundToInt (raw (s, pid (b, "forme")));
-    sp.forme   = fo == 0 ? prisme::Forme::Cloche : fo == 1 ? prisme::Forme::ShelfGrave : prisme::Forme::ShelfAigu;
+    sp.forme   = fo == 0 ? prisme::Forme::ShelfGrave : fo == 1 ? prisme::Forme::Cloche : prisme::Forme::ShelfAigu;
     sp.f0      = raw (s, pid (b, "freq"));
     sp.q       = raw (s, pid (b, "q"));
     sp.gainDb  = raw (s, pid (b, "gain"));
@@ -80,6 +86,7 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     static const prisme::ModeSat modes[5] = { prisme::ModeSat::Iron, prisme::ModeSat::Triode, prisme::ModeSat::Diode, prisme::ModeSat::ClassA, prisme::ModeSat::Rect };   // ordre de modeNames()
     sp.mode    = modes[juce::jlimit (0, 4, juce::roundToInt (raw (s, pid (b, "mode"))))];
     sp.source  = (prisme::SourceExc) juce::roundToInt (raw (s, pid (b, "source")));
+    sp.drive   = driveFromKnob (raw (s, pid (b, "drive")));
     sp.width   = raw (s, pid (b, "width"));
     sp.cible   = (prisme::Shape::Cible) juce::roundToInt (raw (s, pid (b, "cible")));
     sp.timeMs  = raw (s, pid (b, "time"));

@@ -28,6 +28,7 @@ struct BandeSpec
     // Exciter
     ModeSat mode = ModeSat::Iron;
     SourceExc source = SourceExc::Auto;
+    double drive = 1.5;                                     // « Saturation » : niveau visé à l'entrée de la courbe (0,3 doux … 6 très saturé)
     // Tame
     double width = 0.5;
     // Shape
@@ -40,7 +41,7 @@ struct BandeSpec
     bool operator== (const BandeSpec& o) const
     {
         return on == o.on && type == o.type && forme == o.forme && f0 == o.f0 && q == o.q && gainDb == o.gainDb && canal == o.canal && mode == o.mode
-            && source == o.source && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs;
+            && source == o.source && drive == o.drive && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs;
     }
     bool operator!= (const BandeSpec& o) const { return ! (*this == o); }
 };
@@ -59,7 +60,7 @@ public:
             retard[k].init (0.0);
             switch (s.type)
             {
-                case TypeBande::Exciter: exc[k] = std::make_unique<Exciter>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.mode, s.source); break;
+                case TypeBande::Exciter: exc[k] = std::make_unique<Exciter>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.mode, s.source); exc[k]->setDrive (s.drive); break;
                 case TypeBande::Tame:    tame[k] = std::make_unique<Tame>();   tame[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.width); break;
                 case TypeBande::Shape:   shape[k] = std::make_unique<Shape>(); shape[k]->prepare (fs, s.cible, s.forme, s.f0, s.q, s.gainDb, s.timeMs, s.sens); break;
                 case TypeBande::Lift:    lift[k] = std::make_unique<Lift>();   lift[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.amount, s.releaseMs); break;
@@ -81,6 +82,13 @@ public:
             if (shape[k]) shape[k]->setGain (gainDb);
             if (lift[k]) lift[k]->setGain (gainDb);
         }
+    }
+
+    void setDrive (double d)
+    {
+        spec.drive = d;
+        for (int i = 0; i < n; ++i)
+            if (exc[(size_t) i]) exc[(size_t) i]->setDrive (d);
     }
 
     inline void process (double L, double R, double& dL, double& dR)
