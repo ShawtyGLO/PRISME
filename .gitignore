@@ -15,3 +15,8 @@ _proto/renders/
 # --- divers ---
 .claude/
 *.bak*
+
+# vecteurs de référence C++ (régénérables : python _proto/export_refs.py)
+PRISME/tests/refs/
+PRISME/tests/*.exe
+PRISME/tests/*.obj
