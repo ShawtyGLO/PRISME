@@ -53,6 +53,10 @@ if __name__ == "__main__":
     mono = np.stack([x[:, 0], x[:, 0]], axis=1)
     ym = traite(mono, fs, [dict(s, canal="stereo") for s in b])
     check("F05", "mono : L = R en entrée → L = R en sortie (mode Stéréo)", f"écart {np.max(np.abs(ym[:, 0] - ym[:, 1])):.1e}", np.max(np.abs(ym[:, 0] - ym[:, 1])) < 1e-9)
+    bl = b + [dict(type="lift", shape="bell", f0=2000.0, q=0.7, gain_db=9.0, canal="stereo", amount=70.0)]
+    fl = traite(x, fs, bl); hl = process(x, fs, bl)
+    e7 = np.max(np.abs(fl[D:] - hl[:n - D])) / np.max(np.abs(hl))
+    check("F07", "avec une bande Lift : équivalence flux / hors ligne, blocs, mono", f"écart {e7:.1e}", e7 < 1e-9 and np.max(np.abs(traite(x, fs, bl, block=500) - fl)) < 1e-9)
     print(f"  INFO  F06  coût : {dt:.1f} s pour {n / fs:.0f} s de stéréo = {dt / (n / fs):.2f}× le temps réel (numpy, blocs de 8192)")
     nf = sum(1 for o in RES if not o)
     print(f"\n{len(RES) - nf}/{len(RES)} réussis, {nf} échec(s)")

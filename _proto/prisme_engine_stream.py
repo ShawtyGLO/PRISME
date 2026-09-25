@@ -10,6 +10,7 @@ import numpy as np
 from prisme_exciter_stream import ExciterStream, Delai, D_OS
 from prisme_tame import Tame
 from prisme_shape import Shape
+from prisme_lift import Lift
 
 LATENCE = D_OS
 
@@ -36,6 +37,8 @@ class EngineStream:
             return Tame(self.fs, sh, f0, q, g, spec.get("width", 0.5))
         if t == "shape":
             return Shape(self.fs, spec.get("cible", "transitoires"), sh, f0, q, g, None, spec.get("time_ms"), spec.get("sens", 0.85))
+        if t == "lift":
+            return Lift(self.fs, sh, f0, q, g, spec.get("amount", 50.0), spec.get("release_ms", 150.0))
         raise ValueError(t)
 
     @staticmethod
