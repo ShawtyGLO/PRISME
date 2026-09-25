@@ -116,6 +116,8 @@ private:
     void timerCallback() override;
     void select (int b);
     void layoutContent();
+    int uiWidth = 0, lastUiWidth = 0;
+    bool uiDirty = false;
 
     PrismeProcessor& proc;
     int sel = 2;

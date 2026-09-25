@@ -6,6 +6,27 @@ using prismeParams::U8;
 
 static constexpr float kFMin = 20.0f, kFMax = 20000.0f, kGMax = 15.0f;
 
+static juce::File uiFile()
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Shawty").getChildFile ("PRISME").getChildFile ("ui.xml");
+}
+
+// Largeur de fenetre memorisee entre les sessions et entre les projets (0 si absente)
+static int loadWidth()
+{
+    if (auto xml = juce::parseXML (uiFile())) return xml->getIntAttribute ("width", 0);
+    return 0;
+}
+
+static void saveWidth (int w)
+{
+    const auto f = uiFile();
+    f.getParentDirectory().createDirectory();
+    juce::XmlElement x ("PRISME_UI");
+    x.setAttribute ("width", w);
+    x.writeTo (f);
+}
+
 // ------------------------------------------------------------------ courbe
 CurveDisplay::CurveDisplay (PrismeProcessor& p, std::function<int()> getSel, std::function<void (int)> setSel)
     : proc (p), selGet (std::move (getSel)), selSet (std::move (setSel))
@@ -519,7 +540,8 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
     setResizable (true, true);
     getConstrainer()->setFixedAspectRatio ((double) baseW / (double) baseH);
     setResizeLimits (560, 390, 2240, 1560);
-    const int w = juce::jlimit (560, 2240, (int) proc.apvts.state.getProperty ("uiWidth", defaultW));      // taille mémorisée (état du plugin)
+    const int saved = loadWidth();                                                     // derniere taille utilisee (fichier utilisateur)
+    const int w = (saved >= 560 && saved <= 2240) ? saved : defaultW;
     setSize (w, juce::roundToInt ((double) w * baseH / baseW));
     startTimerHz (15);
 }
@@ -527,6 +549,7 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
 PrismeEditor::~PrismeEditor()
 {
     stopTimer();
+    if (uiWidth > 0) saveWidth (uiWidth);
 }
 
 void PrismeEditor::select (int b)
@@ -540,6 +563,8 @@ void PrismeEditor::select (int b)
 
 void PrismeEditor::timerCallback()
 {
+    if (uiDirty && uiWidth == lastUiWidth) { saveWidth (uiWidth); uiDirty = false; }        // taille stable depuis un tick : on l'ecrit
+    lastUiWidth = uiWidth;
     tabs.repaint();
     content.repaint (0, 0, 260, 50);
 }
@@ -572,5 +597,5 @@ void PrismeEditor::resized()
 {
     layoutContent();
     content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) baseW));
-    if (getWidth() > 0) proc.apvts.state.setProperty ("uiWidth", getWidth(), nullptr);
+    if (getWidth() > 0) { uiWidth = getWidth(); uiDirty = true; }
 }
