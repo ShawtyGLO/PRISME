@@ -1,0 +1,74 @@
+"""PRISME — assemblage des 5 bandes EN FLUX (2026-09-25) : bloc par bloc, états conservés, latence fixe compensée.
+
+Même architecture que `prisme_engine` : sortie = entrée + Σ deltas (parallèle, ordre indifférent), modes de canal Stéréo / Mid / Side / Left / Right.
+
+LATENCE : fixe = D_OS = 20 échantillons de base (0,42 ms à 48 kHz), imposée par le suréchantillonnage de l'Exciter. L'entrée sèche ET les deltas du
+Tame et du Shape (qui n'ont aucune latence propre) sont retardés d'autant pour rester alignés sur les deltas de l'Exciter.
+→ à déclarer à l'hôte (`setLatencySamples(20)`) ; constante, que des Exciters soient actifs ou non (les hôtes n'aiment pas une latence qui change).
+"""
+import numpy as np
+from prisme_exciter_stream import ExciterStream, Delai, D_OS
+from prisme_tame import Tame
+from prisme_shape import Shape
+
+LATENCE = D_OS
+
+
+class EngineStream:
+    latence = LATENCE
+
+    def __init__(self, fs, bandes):
+        self.fs = fs
+        self.sec = [Delai(LATENCE), Delai(LATENCE)]
+        self.bandes = []
+        for spec in bandes:
+            if not spec.get("on", True) or spec["gain_db"] == 0.0:
+                continue
+            canal = spec.get("canal", "stereo")
+            n_inst = 2 if canal == "stereo" else 1
+            self.bandes.append((spec, canal, [self._creer(spec) for _ in range(n_inst)], [Delai(LATENCE) for _ in range(n_inst)]))
+
+    def _creer(self, spec):
+        t, sh, f0, q, g = spec["type"], spec["shape"], spec["f0"], spec["q"], spec["gain_db"]
+        if t == "exciter":
+            return ExciterStream(self.fs, shape=sh, f0=f0, q=q, gain_db=g, mode=spec.get("mode", "iron"), source=spec.get("source", "auto"))
+        if t == "tame":
+            return Tame(self.fs, sh, f0, q, g, spec.get("width", 0.5))
+        if t == "shape":
+            return Shape(self.fs, spec.get("cible", "transitoires"), sh, f0, q, g, None, spec.get("time_ms"), spec.get("sens", 0.85))
+        raise ValueError(t)
+
+    @staticmethod
+    def _delta(spec, obj, delai, z):
+        """Delta de la bande sur le signal z, aligné sur l'entrée retardée de LATENCE."""
+        if spec["type"] == "exciter":
+            return obj.process(z)                                   # déjà aligné (porte la latence)
+        return delai.push(obj.process(z) - z)                       # Tame / Shape : zéro latence propre → on retarde le delta
+
+    def process(self, x):
+        """x : (n, 2) → (n, 2), retardé de LATENCE échantillons."""
+        L, R = x[:, 0], x[:, 1]
+        out = np.stack([self.sec[0].push(L), self.sec[1].push(R)], axis=1)
+        for spec, canal, objs, dels in self.bandes:
+            if canal == "stereo":
+                d = np.stack([self._delta(spec, objs[0], dels[0], L), self._delta(spec, objs[1], dels[1], R)], axis=1)
+            elif canal == "mid":
+                dm = self._delta(spec, objs[0], dels[0], (L + R) / 2)
+                d = np.stack([dm, dm], axis=1)
+            elif canal == "side":
+                ds = self._delta(spec, objs[0], dels[0], (L - R) / 2)
+                d = np.stack([ds, -ds], axis=1)
+            elif canal == "left":
+                d = np.stack([self._delta(spec, objs[0], dels[0], L), np.zeros(len(L))], axis=1)
+            else:
+                d = np.stack([np.zeros(len(R)), self._delta(spec, objs[0], dels[0], R)], axis=1)
+            out = out + d
+        return out
+
+
+def traite(x, fs, bandes, block=8192):
+    e = EngineStream(fs, bandes)
+    out = np.empty_like(x)
+    for i in range(0, len(x), block):
+        out[i:i + block] = e.process(x[i:i + block])
+    return out
