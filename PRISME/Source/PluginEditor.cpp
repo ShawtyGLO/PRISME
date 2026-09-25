@@ -343,6 +343,7 @@ void BandCard::rebuild (int b)
     posKnobs.clear(); typeKnobs.clear(); typeSegs.clear(); typeSegTitles.clear();
     removeAllChildren();
 
+    BandCard* self = this;
     auto& ap = proc.apvts;
     const int type = juce::roundToInt (pp::raw (ap, pp::pid (b, "type")));
     colour = col::forType (type);
@@ -374,7 +375,7 @@ void BandCard::rebuild (int b)
     };
     auto addSeg = [&] (const char* id, const juce::String& title, const juce::StringArray& names)
     {
-        typeSegs.push_back (std::make_unique<Seg> (ap, pp::pid (b, id), names, colour, [safe = juce::Component::SafePointer<BandCard> (this)] { if (safe != nullptr) safe->rebuild (safe->band); }));
+        typeSegs.push_back (std::make_unique<Seg> (ap, pp::pid (b, id), names, colour, [safe = juce::Component::SafePointer<BandCard> (self)] { if (safe != nullptr) safe->rebuild (safe->band); }));
         typeSegTitles.push_back (title);
         addAndMakeVisible (*typeSegs.back());
     };
