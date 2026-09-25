@@ -86,6 +86,26 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44",
         y = tame_band(sig, fs, shape=sh, f0=f0, q=q, gain_db=g, width=wd, block=8192)
         dump(nom, sig, y)
         man.append(f"tame {nom} {fs} {sh} {f0} {q} {g} {wd}")
+from prisme_engine_stream import traite
+from tests_engine import config as config_type
+cfg2 = config_type()
+cfg2[0].update(type="lift", cible=None, gain_db=6.0, amount=70.0, canal="stereo")
+cfg2[1].update(type="exciter", gain_db=5.0, mode="triode", source="band", canal="left")
+cfg2[2].update(type="lift", gain_db=-6.0, amount=60.0, release_ms=300.0, canal="side")
+cfg2[3].update(type="tame", gain_db=4.0, width=0.3, canal="right")
+cfg2[4].update(type="shape", cible="sustain", gain_db=-4.0, time_ms=None, canal="mid")
+xs_full = load(SRC)[1]
+xstereo = np.ascontiguousarray(xs_full[int(30 * fs0): int(32 * fs0)])
+for nom, cfg in (("type", config_type()), ("variee", cfg2)):
+    y = traite(xstereo, int(fs0), cfg)
+    np.asarray(xstereo, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.in.f64"))
+    np.asarray(y, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.out.f64"))
+    with open(os.path.join(OUT, f"engine_{nom}.cfg"), "w", encoding="utf-8") as f:
+        for s in cfg:
+            f.write(" ".join(str(v) for v in (int(s.get("on", True)), s["type"], s["shape"], s["f0"], s["q"], s["gain_db"], s.get("canal", "stereo"), s.get("mode", "iron"),
+                                            s.get("source", "auto"), s.get("width", 0.5), s.get("cible") or "transitoires", s.get("time_ms") or 0.0, s.get("sens", 0.85),
+                                            s.get("amount", 50.0), s.get("release_ms", 150.0))) + "\n")
+    man.append(f"engine engine_{nom} {int(fs0)} x 0 0")
 for fs in (44100, 48000, 88200, 96000, 192000):
     for sh in ("bell", "highshelf", "lowshelf"):
         for f0, q in ((20.0, 0.3), (42.0, 0.71), (1000.0, 1.0), (9600.0, 12.0), (18000.0, 0.7)):

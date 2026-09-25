@@ -5,6 +5,7 @@
 #include "../Source/Dsp/Shape.h"
 #include "../Source/Dsp/Exciter.h"
 #include "../Source/Dsp/Tame.h"
+#include "../Source/Dsp/Engine.h"
 #include <cstdlib>
 #include <xmmintrin.h>
 #include <chrono>
@@ -36,7 +37,7 @@ int main (int argc, char** argv)
     std::ifstream man (dir + "/manifest.txt");
     if (! man) { std::cout << "manifest introuvable dans " << dir << "\n"; return 2; }
     int total = 0, echecs = 0;
-    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0;
+    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0, pireEngine = 0;
     const double tolTame = 1e-7;                         // −140 dB ; le prototype calcule sa chaîne spectrale en float32 (voir Tame.h)
     std::string ligne;
     while (std::getline (man, ligne))
@@ -110,6 +111,46 @@ int main (int argc, char** argv)
             if (e > tolTame) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
             else if (std::getenv ("PRISME_VERBOSE")) std::cout << "  ok   " << nom << " " << e << "\n";
         }
+        else if (type == "engine")
+        {
+            std::ifstream cfg (dir + "/" + nom + ".cfg");
+            std::vector<BandeSpec> specs;
+            std::string ltype, lforme, lcanal, lmode, lsource, lcible;
+            int on;
+            double lf0, lq, lg, lw, ltime, lsens, lam, lrel;
+            while (cfg >> on >> ltype >> lforme >> lf0 >> lq >> lg >> lcanal >> lmode >> lsource >> lw >> lcible >> ltime >> lsens >> lam >> lrel)
+            {
+                BandeSpec b;
+                b.on = on != 0;
+                b.type = ltype == "exciter" ? TypeBande::Exciter : ltype == "tame" ? TypeBande::Tame : ltype == "shape" ? TypeBande::Shape : TypeBande::Lift;
+                b.forme = forme (lforme); b.f0 = lf0; b.q = lq; b.gainDb = lg;
+                b.canal = lcanal == "mid" ? Canal::Mid : lcanal == "side" ? Canal::Side : lcanal == "left" ? Canal::Left : lcanal == "right" ? Canal::Right : Canal::Stereo;
+                b.mode = lmode == "iron" ? ModeSat::Iron : lmode == "triode" ? ModeSat::Triode : lmode == "diode" ? ModeSat::Diode : lmode == "classa" ? ModeSat::ClassA : ModeSat::Rect;
+                b.source = lsource == "auto" ? SourceExc::Auto : SourceExc::Bande;
+                b.width = lw; b.cible = lcible == "sustain" ? Shape::Cible::Sustain : Shape::Cible::Transitoires;
+                b.timeMs = ltime; b.sens = lsens; b.amount = lam; b.releaseMs = lrel;
+                specs.push_back (b);
+            }
+            const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
+            ++total;
+            if (xs.empty() || xs.size() != ref.size() || specs.empty()) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
+            const size_t n = xs.size() / 2;
+            std::vector<double> L (n), R (n), oL (n), oR (n);
+            for (size_t i = 0; i < n; ++i) { L[i] = xs[2 * i]; R[i] = xs[2 * i + 1]; }
+            Engine eng;
+            eng.prepare (fs, specs);
+            for (size_t i = 0; i < n; i += 500)                                  // blocs de 500 : l'état doit passer d'un bloc à l'autre
+            {
+                const int m = (int) std::min<size_t> (500, n - i);
+                eng.process (L.data() + i, R.data() + i, oL.data() + i, oR.data() + i, m);
+            }
+            double crete = 0, e = 0;
+            for (double v : ref) crete = std::max (crete, std::abs (v));
+            for (size_t i = 0; i < n; ++i) e = std::max ({ e, std::abs (oL[i] - ref[2 * i]), std::abs (oR[i] - ref[2 * i + 1]) });
+            e /= std::max (crete, 1e-30);
+            pireEngine = std::max (pireEngine, e);
+            if (e > 1e-7) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
+        }
         else if (type == "lift")
         {
             double g, am, rel;
@@ -136,7 +177,7 @@ int main (int argc, char** argv)
             if (e > 1e-9) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
     }
-    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; tame : " << pireTame << " (écarts relatifs max)\n";
+    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; tame : " << pireTame << " ; engine : " << pireEngine << " (écarts relatifs max)\n";
     // coût : 60 s de mono à 48 kHz, configuration type
     {
         Lift l; l.prepare (48000, Forme::Cloche, 1000, 1.0, 12, 60, 150);
