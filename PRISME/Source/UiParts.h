@@ -86,7 +86,7 @@ public:
         slider.setColour (juce::Slider::rotarySliderFillColourId, c);
         slider.setLookAndFeel (&lnf);
         slider.setVelocityBasedMode (false);
-        slider.setMouseDragSensitivity (150);
+        slider.setMouseDragSensitivity (280);                      // pixels pour parcourir toute la plage (150 : trop sensible, retour de test) ; Maj = réglage fin
         slider.onValueChange = [this] { repaint(); };
         addAndMakeVisible (slider);
         attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, paramId, slider);
