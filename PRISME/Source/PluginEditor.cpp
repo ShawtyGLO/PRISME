@@ -160,6 +160,7 @@ void CurveDisplay::paint (juce::Graphics& g)
     }
 
     const int sel = selGet();
+    const auto order = pp::bandOrder (proc.apvts);
     struct B { bool on; int type, shape; float f0, q, gain; };
     B bands[pp::nBands];
     for (int i = 0; i < pp::nBands; ++i)
@@ -214,7 +215,7 @@ void CurveDisplay::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xff0b0d10));
         g.drawEllipse (x - r, y - r, 2 * r, 2 * r, 2.0f);
         g.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold)));
-        g.drawText (juce::String (i + 1), (int) (x - r), (int) (y - r), (int) (2 * r), (int) (2 * r), juce::Justification::centred);
+        g.drawText (juce::String (order.rankOf[i] + 1), (int) (x - r), (int) (y - r), (int) (2 * r), (int) (2 * r), juce::Justification::centred);
     }
     if (delta)
     {
@@ -287,9 +288,11 @@ void CurveDisplay::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWhe
 void BandTabs::paint (juce::Graphics& g)
 {
     const int sel = selGet();
-    for (int i = 0; i < pp::nBands; ++i)
+    const auto ord = pp::bandOrder (proc.apvts);
+    for (int rank = 0; rank < pp::nBands; ++rank)
     {
-        const auto r = cell (i).toFloat();
+        const int i = ord.order[rank];
+        const auto r = cell (rank).toFloat();
         const int type = juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "type")));
         const bool on = pp::raw (proc.apvts, pp::pid (i, "on")) > 0.5f;
         const auto c = col::forType (type);
@@ -314,9 +317,10 @@ void BandTabs::paint (juce::Graphics& g)
 
 void BandTabs::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    for (int i = 0; i < pp::nBands; ++i)
-        if (cell (i).contains (e.getPosition()))
-            if (auto* p = proc.apvts.getParameter (pp::pid (i, "on")))
+    const auto ord = pp::bandOrder (proc.apvts);
+    for (int rank = 0; rank < pp::nBands; ++rank)
+        if (cell (rank).contains (e.getPosition()))
+            if (auto* p = proc.apvts.getParameter (pp::pid (ord.order[rank], "on")))
             {
                 p->beginChangeGesture();
                 p->setValueNotifyingHost (p->getValue() > 0.5f ? 0.0f : 1.0f);
@@ -326,8 +330,9 @@ void BandTabs::mouseDoubleClick (const juce::MouseEvent& e)
 
 void BandTabs::mouseDown (const juce::MouseEvent& e)
 {
-    for (int i = 0; i < pp::nBands; ++i)
-        if (cell (i).contains (e.getPosition())) { selSet (i); return; }
+    const auto ord = pp::bandOrder (proc.apvts);
+    for (int rank = 0; rank < pp::nBands; ++rank)
+        if (cell (rank).contains (e.getPosition())) { selSet (ord.order[rank]); return; }
 }
 
 // ------------------------------------------------------------------ fiche de bande
@@ -512,7 +517,8 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
     setResizable (true, true);
     getConstrainer()->setFixedAspectRatio ((double) baseW / (double) baseH);
     setResizeLimits (560, 390, 2240, 1560);
-    setSize (baseW, baseH);
+    const int w = juce::jlimit (560, 2240, (int) proc.apvts.state.getProperty ("uiWidth", defaultW));      // taille mémorisée (état du plugin)
+    setSize (w, juce::roundToInt ((double) w * baseH / baseW));
     startTimerHz (15);
 }
 
@@ -564,4 +570,5 @@ void PrismeEditor::resized()
 {
     layoutContent();
     content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) baseW));
+    if (getWidth() > 0) proc.apvts.state.setProperty ("uiWidth", getWidth(), nullptr);
 }

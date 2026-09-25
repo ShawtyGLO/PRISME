@@ -70,7 +70,21 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 // Réglage « Saturation » 0…1 → niveau visé à l'entrée de la courbe : 0,3 (doux) … 6 (très saturé), géométrique ; 0,54 ≈ 1,5 = valeur historique.
 inline double driveFromKnob (float x) { return 0.3 * std::pow (20.0, (double) x); }
 
+// Ordre d'AFFICHAGE des bandes : par fréquence croissante (égalité : emplacement). order[rang] = emplacement ; rankOf[emplacement] = rang.
+// Seul l'affichage suit la position : les emplacements (b1_… b5_…) et l'automation ne bougent jamais.
+struct BandOrder { int order[nBands]; int rankOf[nBands]; };
+
 inline float raw (juce::AudioProcessorValueTreeState& s, const juce::String& id) { return s.getRawParameterValue (id)->load(); }
+
+inline BandOrder bandOrder (juce::AudioProcessorValueTreeState& s)
+{
+    BandOrder o;
+    float f[nBands];
+    for (int b = 0; b < nBands; ++b) { f[b] = raw (s, pid (b, "freq")); o.order[b] = b; }
+    std::stable_sort (o.order, o.order + nBands, [&] (int a, int c) { return f[a] < f[c]; });
+    for (int r = 0; r < nBands; ++r) o.rankOf[o.order[r]] = r;
+    return o;
+}
 
 inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
 {

@@ -358,7 +358,7 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 else { dL = cL; dR = cR; }
                 sumL += dL; sumR += dR;
                 if (solo[si]) { soloL += dL; soloR += dR; }
-                if (wetOn) wetTmp[si][(size_t) i] = (float) (0.5 * (dL + dR));
+                if (wetOn) wetTmp[si][(size_t) i] = (float) (0.5 * ((s.cur && s.cur->getSpec().canal == prisme::Canal::Side) ? dL - dR : dL + dR));   // Side : d à gauche, −d à droite
             }
             const double g = (double) outGain.getNextValue();
             const double bm = (double) bypassMix.getNextValue();

@@ -54,7 +54,7 @@ class ExciterStream:
     latence = D_OS
 
     def __init__(self, fs, shape="bell", f0=12000.0, q=2.0, gain_db=5.0, mode="iron", source="auto", drive=1.5,
-                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03):
+                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03, env_tau=0.02, gmin=1.0, gmax_db=24.0):
         self.fs, self.mode, self.source, self.drive = fs, mode, source, drive
         self.sign, self.amount = (1.0 if gain_db >= 0 else -1.0), 10.0 ** (abs(gain_db) / 20.0) - 1.0
         self.floor_ratio, self.out_sections = floor_ratio, out_sections
@@ -67,7 +67,8 @@ class ExciterStream:
             self.zf = zone_filter(shape, fs, f0, q)
             self.z_src = [np.zeros(2)]
         self.count = 0                                                     # échantillons de base déjà traités
-        self.a_env = np.exp(-1.0 / (0.02 * fs))
+        self.a_env = np.exp(-1.0 / (env_tau * fs))
+        self.gmin, self.gmax = gmin, 10.0 ** (gmax_db / 20.0)
         self.z_env = np.zeros(1)
         self.z_up, self.z_dn, self.z_dl = np.zeros(40), np.zeros(40), np.zeros(40)
         self.x1, self.x1l = 0.0, 0.0
@@ -93,7 +94,7 @@ class ExciterStream:
             s0, self.z_src[i] = lfilter(*self.zf, s0, zi=self.z_src[i])
         # gain adaptatif (montée seulement, jusqu'à +24 dB)
         env, self.z_env = _un_pole(self.a_env, np.abs(s0), self.z_env)
-        g = np.clip(self.drive / np.maximum(env * (np.pi / 2), 1e-9), 1.0, 10.0 ** (24.0 / 20.0))
+        g = np.clip(self.drive / np.maximum(env * (np.pi / 2), 1e-9), self.gmin, self.gmax)
         sin = s0 * g
         # suréchantillonnage ×2, ADAA sur la courbe et sur la courbe linéaire, retour ×1 (latence D_OS)
         zs = np.zeros(2 * n)
