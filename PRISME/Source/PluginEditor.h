@@ -110,7 +110,7 @@ public:
     void resized() override;
 
     static constexpr int baseW = 1120, baseH = 780;                    // taille de CONCEPTION (mise a l'echelle ensuite)
-    static constexpr int defaultW = 900;                               // taille a l'ouverture (retour de llg53) ; la derniere taille utilisee est memorisee
+    static constexpr int defaultW = 980;                               // taille a l'ouverture (retour de llg53) ; la derniere taille utilisee est memorisee
 
 private:
     void timerCallback() override;
