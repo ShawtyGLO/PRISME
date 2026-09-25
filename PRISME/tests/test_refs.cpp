@@ -2,6 +2,7 @@
 //   test_refs.exe [dossier_refs]        code de sortie ≠ 0 si un test échoue.
 #include "../Source/Dsp/Lift.h"
 #include "../Source/Dsp/Shape.h"
+#include "../Source/Dsp/Exciter.h"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -30,7 +31,7 @@ int main (int argc, char** argv)
     std::ifstream man (dir + "/manifest.txt");
     if (! man) { std::cout << "manifest introuvable dans " << dir << "\n"; return 2; }
     int total = 0, echecs = 0;
-    double pireZone = 0, pireLift = 0, pireShape = 0;
+    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0;
     std::string ligne;
     while (std::getline (man, ligne))
     {
@@ -68,6 +69,24 @@ int main (int argc, char** argv)
             pireShape = std::max (pireShape, e);
             if (e > 1e-9) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
+        else if (type == "exciter")
+        {
+            double g;
+            std::string mo, so;
+            is >> g >> mo >> so;
+            const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
+            ++total;
+            if (xs.empty() || xs.size() != ref.size()) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
+            double crete = 0, e = 0;
+            for (double v : ref) crete = std::max (crete, std::abs (v));
+            const ModeSat m = mo == "iron" ? ModeSat::Iron : mo == "triode" ? ModeSat::Triode : mo == "diode" ? ModeSat::Diode : mo == "classa" ? ModeSat::ClassA : ModeSat::Rect;
+            Exciter ex;
+            ex.prepare (fs, forme (sh), f0, q, g, m, so == "auto" ? SourceExc::Auto : SourceExc::Bande);
+            for (size_t i = 0; i < xs.size(); ++i) e = std::max (e, std::abs (ex.process (xs[i]) - ref[i]));
+            e /= std::max (crete, 1e-30);
+            pireExc = std::max (pireExc, e);                 // tolérance −140 dB : la projection divise par une énergie proche de 1e-12 sur les passages quasi silencieux
+            if (e > 1e-7) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
+        }
         else if (type == "lift")
         {
             double g, am, rel;
@@ -94,7 +113,7 @@ int main (int argc, char** argv)
             if (e > 1e-9) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
     }
-    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " (écarts relatifs max)\n";
+    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " (écarts relatifs max)\n";
     // coût : 60 s de mono à 48 kHz, configuration type
     {
         Lift l; l.prepare (48000, Forme::Cloche, 1000, 1.0, 12, 60, 150);
@@ -104,6 +123,15 @@ int main (int argc, char** argv)
         double acc = 0; for (double v : x) acc += l.process (v);
         const double dt = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
         std::cout << "coût Lift : " << dt / 60.0 * 100.0 << " % d'un cœur par bande mono (" << acc * 0 << ")\n";
+    }
+    {
+        Exciter ex; ex.prepare (48000, Forme::Cloche, 3000, 1.0, 5, ModeSat::Iron, SourceExc::Auto);
+        std::vector<double> x (48000 * 30);
+        unsigned s = 7; for (double& v : x) { s = s * 1664525u + 1013904223u; v = ((s >> 8) / 8388608.0 - 1.0) * 0.2; }
+        const auto t0 = std::chrono::steady_clock::now();
+        double acc = 0; for (double v : x) acc += ex.process (v);
+        const double dt = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        std::cout << "coût Exciter (Iron Auto) : " << dt / 30.0 * 100.0 << " % d'un cœur par bande mono (" << acc * 0 << ")\n";
     }
     std::cout << (total - echecs) << "/" << total << " réussis\n";
     return echecs ? 1 : 0;

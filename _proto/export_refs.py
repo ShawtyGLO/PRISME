@@ -3,6 +3,7 @@
 Fichiers : <nom>.in.f64 / <nom>.out.f64 (float64 brut, mono) + manifest.txt (une ligne par test).
   lift  <nom> <fs> <forme> <f0> <q> <gain_db> <amount> <release_ms>
   shape <nom> <fs> <forme> <f0> <q> <gain_db> <cible> <time_ms(0=défaut)> <sens>
+  exciter <nom> <fs> <forme> <f0> <q> <gain_db> <mode> <source>   (sortie = delta aligné sur l'entrée retardée de 20)
   zone  <nom> <fs> <forme> <f0> <q> <b0> <b1> <b2> <a1> <a2>
 Lancer :  python _proto/export_refs.py
 """
@@ -16,6 +17,7 @@ from bench_leak import SRC
 from prisme_band import zone_filter
 from prisme_lift import lift_band
 from prisme_shape import shape_band
+from prisme_exciter_stream import exciter_stream, H0, H_UP
 
 OUT = os.path.join(HERE, "..", "PRISME", "tests", "refs")
 os.makedirs(OUT, exist_ok=True)
@@ -59,6 +61,22 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)),
         y = shape_band(sig, fs, cb, sh, f0, q, g, block=8192, time_ms=(tm or None), sens=sens)
         dump(nom, sig, y)
         man.append(f"shape {nom} {fs} {sh} {f0} {q} {g} {cb} {tm} {sens}")
+# tables de coefficients (FIR du suréchantillonnage) : les MÊMES nombres que le prototype
+TAB = os.path.join(HERE, "..", "PRISME", "Source", "Dsp", "Tables.h")
+with open(TAB, "w", encoding="utf-8") as f:
+    f.write("// GÉNÉRÉ par _proto/export_refs.py — ne pas éditer. FIR de resample_poly(x, 2, 1) : firwin(41, 0.5, kaiser 5).NL#pragma once NLNLnamespace prisme::tables NL{NL".replace("NL", chr(10)))
+    for nom, v in (("h0", H0), ("hUp", H_UP)):
+        f.write(f"inline constexpr double {nom}[41] = {{" + chr(10) + "    " + ("," + chr(10) + "    ").join(f"{x:.17g}" for x in v) + chr(10) + "};" + chr(10))
+    f.write("}" + chr(10))
+ECFG = [("iron", "auto", "bell", 12000.0, 2.0, 5.0), ("iron", "auto", "highshelf", 9600.0, 0.71, 5.0), ("triode", "auto", "bell", 2500.0, 1.0, 6.0),
+        ("diode", "band", "bell", 3000.0, 1.0, 5.0), ("classa", "auto", "lowshelf", 80.0, 0.71, 4.0), ("rect", "auto", "bell", 250.0, 1.0, 5.0),
+        ("iron", "band", "highshelf", 8000.0, 0.71, 6.0), ("iron", "auto", "bell", 5000.0, 1.5, -5.0)]
+for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)), (96000, "syn96", synth(96000))):
+    for i, (mo, so, sh, f0, q, g) in enumerate(ECFG):
+        nom = f"exc_{nom_sig}_{i}"
+        y = exciter_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, mode=mo, source=so)
+        dump(nom, sig, y)
+        man.append(f"exciter {nom} {fs} {sh} {f0} {q} {g} {mo} {so}")
 for fs in (44100, 48000, 88200, 96000, 192000):
     for sh in ("bell", "highshelf", "lowshelf"):
         for f0, q in ((20.0, 0.3), (42.0, 0.71), (1000.0, 1.0), (9600.0, 12.0), (18000.0, 0.7)):
