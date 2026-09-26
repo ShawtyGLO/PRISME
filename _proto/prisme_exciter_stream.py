@@ -56,10 +56,11 @@ class ExciterStream:
     latence = D_OS
 
     def __init__(self, fs, shape="bell", f0=12000.0, q=2.0, gain_db=5.0, mode="iron", source="auto", drive=1.5,
-                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03, env_tau=AGC_TAU, gmin=AGC_GMIN, gmax_db=AGC_GMAX_DB, tilt=0.0, src_f0=None):
+                 out_sections=3, src_q=2.0, floor_ratio=0.05, norm_tau=0.2, null_tau=0.03, env_tau=AGC_TAU, gmin=AGC_GMIN, gmax_db=AGC_GMAX_DB, tilt=0.0, src_f0=None, raw_mix=None):
         self.fs, self.mode, self.source, self.drive = fs, mode, source, drive
         self.sign, self.amount = (1.0 if gain_db >= 0 else -1.0), 10.0 ** (abs(gain_db) / 20.0) - 1.0
         self.floor_ratio, self.out_sections = floor_ratio, out_sections
+        self.raw_mix = raw_mix                                            # essai « parallèle » : pas de normalisation par la zone, wet = harmoniques réellement produites × raw_mix
         self.focus = source != "band"
         self.courbe, self.courbe_lin = _courbe(mode, drive), _courbe("lin")
         if source == "auto":
@@ -130,6 +131,9 @@ class ExciterStream:
         if self.focus:
             for i in range(self.out_sections):
                 res, self.z_out[i] = lfilter(*self.zo, res, zi=self.z_out[i])
+        if self.raw_mix is not None:
+            self.count += n
+            return self.sign * self.raw_mix * res
         # normalisation par la zone
         if self.source == "auto":
             s_ref = s0_d
