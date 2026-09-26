@@ -400,7 +400,7 @@ void BandCard::rebuild (int b)
         typeSegTitles.push_back (title);
         addAndMakeVisible (*typeSegs.back());
     };
-    if (type == 0)      { addSeg ("mode", "MODE", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); addKnob ("drive", "Saturation", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
+    if (type == 0)      { addSeg ("mode", "PROFIL", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); addKnob ("drive", "Harmoniques", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
                           if (juce::roundToInt (pp::raw (proc.apvts, pp::pid (b, "source"))) == 1) addKnob ("tilt", "Tilt", [] (double v) { return (v > 0 ? juce::String ("+") : juce::String()) + juce::String (v, 2); }); }
     else if (type == 1) { addKnob ("width", "Largeur", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; }); }
     else if (type == 2)
@@ -415,7 +415,7 @@ void BandCard::rebuild (int b)
         addKnob ("release", U8 ("Relâchement"), [] (double v) { return juce::String (juce::roundToInt (v)) + " ms"; });
     }
     juce::String notes[4] = {
-        U8 ("Ajoute des harmoniques dans la zone (gain de 0 à +15 dB). Saturation : de doux à très saturé. En mode Bande, Tilt penche la source : plus de saturation dans les graves (−) ou les aigus (+)."),
+        U8 ("Ajoute des harmoniques dans la zone, en parallèle et seulement sur les pics au-dessus du niveau courant (gain de 0 à +15 dB : dose du wet). Profil : Doux, Chaud, Mordant, Mordant chaud. Harmoniques : de doux à dur. En mode Bande, Tilt penche la source : plus de saturation dans les graves (−) ou les aigus (+)."),
         U8 ("Atténue les résonances qui ressortent dans la zone (gain −) ou accentue les pics déjà forts (gain +). Largeur : de fin à large."),
         U8 ("Agit sur les transitoires ou sur le sustain de la bande, dans les deux sens. Durée : combien de temps dure l'effet après une attaque."),
         U8 ("Relève ce qui est faible dans la zone (gain +) ou l'abaisse (gain −). Amount : plus il monte, plus de matière est concernée. Protection du souffle automatique.") };

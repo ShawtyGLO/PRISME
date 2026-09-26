@@ -6,6 +6,7 @@
 // Aucune dépendance JUCE. prepare() alloue ; process() n'alloue pas.
 #pragma once
 #include "Exciter.h"
+#include "ExciterV2.h"
 #include "Lift.h"
 #include "Shape.h"
 #include "Tame.h"
@@ -26,10 +27,10 @@ struct BandeSpec
     double f0 = 1000.0, q = 0.71, gainDb = 0.0;
     Canal canal = Canal::Stereo;
     // Exciter
-    ModeSat mode = ModeSat::Iron;
+    ProfilExc profil = ProfilExc::MordantChaud;              // Exciter v2 : Doux / Chaud / Mordant / Mordant chaud
     SourceExc source = SourceExc::Auto;
     double tilt = 0.0;                                      // −1 … +1, mode Bande seulement
-    double drive = 1.5;                                     // « Saturation » : niveau visé à l'entrée de la courbe (0,3 doux … 6 très saturé)
+    double drive = 2.5;                                     // « Harmoniques » : niveau normalisé à l'entrée de la courbe (0,3 doux … 6 dur)
     // Tame
     double width = 0.5;
     // Shape
@@ -41,7 +42,7 @@ struct BandeSpec
     bool actif() const { return on && gainDb != 0.0; }      // gain 0 : sortie = entrée retardée exactement
     bool operator== (const BandeSpec& o) const
     {
-        return on == o.on && type == o.type && forme == o.forme && f0 == o.f0 && q == o.q && gainDb == o.gainDb && canal == o.canal && mode == o.mode
+        return on == o.on && type == o.type && forme == o.forme && f0 == o.f0 && q == o.q && gainDb == o.gainDb && canal == o.canal && profil == o.profil
             && source == o.source && drive == o.drive && tilt == o.tilt && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs;
     }
     bool operator!= (const BandeSpec& o) const { return ! (*this == o); }
@@ -54,14 +55,14 @@ public:
     void prepare (double fs, const BandeSpec& s)
     {
         spec = s;
-        n = s.canal == Canal::Stereo ? 2 : 1;
+        n = (s.canal == Canal::Stereo && s.type != TypeBande::Exciter) ? 2 : 1;      // Exciter v2 : une seule chaîne (non-linéarité LIÉE : source = milieu)
         for (int i = 0; i < n; ++i)
         {
             const size_t k = (size_t) i;
             retard[k].init (0.0);
             switch (s.type)
             {
-                case TypeBande::Exciter: exc[k] = std::make_unique<Exciter>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.mode, s.source); exc[k]->setDrive (s.drive); exc[k]->setTilt (s.tilt); break;
+                case TypeBande::Exciter: exc[k] = std::make_unique<ExciterV2>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.profil, s.source, s.drive, s.tilt); break;
                 case TypeBande::Tame:    tame[k] = std::make_unique<Tame>();   tame[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.width); break;
                 case TypeBande::Shape:   shape[k] = std::make_unique<Shape>(); shape[k]->prepare (fs, s.cible, s.forme, s.f0, s.q, s.gainDb, s.timeMs, s.sens); break;
                 case TypeBande::Lift:    lift[k] = std::make_unique<Lift>();   lift[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.amount, s.releaseMs); break;
@@ -104,7 +105,10 @@ public:
         dL = dR = 0.0;
         switch (spec.canal)
         {
-            case Canal::Stereo: dL = delta (0, L); dR = delta (1, R); break;
+            case Canal::Stereo:
+                if (spec.type == TypeBande::Exciter) { const double d = delta (0, 0.5 * (L + R)); dL = dR = d; }      // Exciter : lié (milieu)
+                else { dL = delta (0, L); dR = delta (1, R); }
+                break;
             case Canal::Mid:   { const double d = delta (0, 0.5 * (L + R)); dL = dR = d; break; }
             case Canal::Side:  { const double d = delta (0, 0.5 * (L - R)); dL = d; dR = -d; break; }
             case Canal::Left:  dL = delta (0, L); break;
@@ -128,7 +132,7 @@ private:
 
     BandeSpec spec;
     int n = 1;
-    std::array<std::unique_ptr<Exciter>, 2> exc;
+    std::array<std::unique_ptr<ExciterV2>, 2> exc;
     std::array<std::unique_ptr<Tame>, 2> tame;
     std::array<std::unique_ptr<Shape>, 2> shape;
     std::array<std::unique_ptr<Lift>, 2> lift;

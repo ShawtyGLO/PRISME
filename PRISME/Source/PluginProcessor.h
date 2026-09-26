@@ -11,7 +11,7 @@
     CHANGEMENT DE RÉGLAGE EN COURS DE LECTURE
       · GAIN : appliqué en direct à la bande vivante (aucune reconstruction, aucun état perdu) ;
       · autre réglage (fréquence, Q, forme, type, mode, canal…) : un thread de construction bâtit une NOUVELLE bande puis la « chauffe » en lui rejouant
-        les 1,5 dernières secondes d'entrée (sinon ses détecteurs et normalisations repartent de zéro et le delta explose pendant 100 ms à 1 s : constaté
+        les 2,5 dernières secondes d entrée (sinon ses détecteurs et normalisations repartent de zéro et le delta explose pendant 100 ms à 1 s : constaté
         sur l'Exciter, +11 à +15 dB) ; le thread audio la rattrape sur les derniers échantillons (répartis sur plusieurs blocs), puis fond l'ancienne vers
         la nouvelle en 1024 échantillons.
       · aucune allocation ni destruction sur le thread audio (les bandes remplacées sont rendues au thread message).
@@ -91,7 +91,7 @@ private:
     bool readRing (std::int64_t from, int count, double* L, double* R) const;
 
     static constexpr int fadeLen = 1024;
-    static constexpr double histSeconds = 1.5;
+    static constexpr double histSeconds = 2.5;                  // l'Exciter v2 a un niveau lent de 400 ms : 2,5 s = 6 constantes de temps
 
     std::array<Slot, prismeParams::nBands> slots;
     std::atomic<double> fsHz { 0.0 };

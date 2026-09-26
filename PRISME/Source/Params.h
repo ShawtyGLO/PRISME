@@ -17,7 +17,7 @@ inline juce::String pid (int band, const char* name) { return "b" + juce::String
 inline juce::StringArray typeNames()   { return sa ({ "Exciter", "Tame", "Shape", "Lift" }); }
 inline juce::StringArray formeNames()  { return sa ({ "Shelf grave", "Cloche", "Shelf aigu" }); }
 inline juce::StringArray canalNames()  { return sa ({ U8 ("Stéréo"), "Mid", "Side", "L", "R" }); }
-inline juce::StringArray modeNames()   { return sa ({ "Iron", "Triode", "Diode", "Class-A", "Rectifier" }); }
+inline juce::StringArray modeNames()   { return sa ({ "Doux", "Chaud", "Mordant", "Mordant chaud" }); }
 inline juce::StringArray sourceNames() { return sa ({ "Auto", "Bande" }); }
 inline juce::StringArray cibleNames()  { return sa ({ "Transitoires", "Sustain" }); }
 
@@ -37,7 +37,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "on"), 1 }, n + "active", true));
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "solo"), 1 }, n + U8 ("delta (écoute seule)"), false));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "tilt"), 1 }, n + "tilt (mode Bande)", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
-        layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "drive"), 1 }, n + "saturation", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.54f));
+        layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "drive"), 1 }, n + "saturation", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.71f));      // 0,71 → drive 2,5
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "type"), 1 }, n + "type", typeNames(), defType[b]));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "forme"), 1 }, n + "forme", formeNames(), defForme[b]));
 
@@ -51,7 +51,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "gain"), 1 }, n + "gain", juce::NormalisableRange<float> (-15.0f, 15.0f, 0.1f), 0.0f));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "canal"), 1 }, n + "canal", canalNames(), 0));
-        layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "mode"), 1 }, n + "mode", modeNames(), 0));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "mode"), 1 }, n + "profil (Exciter)", modeNames(), 3));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "source"), 1 }, n + "source", sourceNames(), 0));
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "width"), 1 }, n + "largeur", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "cible"), 1 }, n + "cible", cibleNames(), 0));
@@ -98,8 +98,7 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     sp.q       = raw (s, pid (b, "q"));
     sp.gainDb  = raw (s, pid (b, "gain"));
     sp.canal   = (prisme::Canal) juce::roundToInt (raw (s, pid (b, "canal")));
-    static const prisme::ModeSat modes[5] = { prisme::ModeSat::Iron, prisme::ModeSat::Triode, prisme::ModeSat::Diode, prisme::ModeSat::ClassA, prisme::ModeSat::Rect };   // ordre de modeNames()
-    sp.mode    = modes[juce::jlimit (0, 4, juce::roundToInt (raw (s, pid (b, "mode"))))];
+    sp.profil  = (prisme::ProfilExc) juce::jlimit (0, 3, juce::roundToInt (raw (s, pid (b, "mode"))));      // Doux, Chaud, Mordant, Mordant chaud
     sp.source  = (prisme::SourceExc) juce::roundToInt (raw (s, pid (b, "source")));
     sp.tilt    = raw (s, pid (b, "tilt"));
     sp.drive   = driveFromKnob (raw (s, pid (b, "drive")));

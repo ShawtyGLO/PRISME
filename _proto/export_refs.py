@@ -19,6 +19,7 @@ from prisme_lift import lift_band
 from prisme_shape import shape_band
 from prisme_exciter_stream import exciter_stream, H0, H_UP
 from prisme_tame import tame_band
+from prisme_exciter_v2_stream import exciter_v2_stream
 
 OUT = os.path.join(HERE, "..", "PRISME", "tests", "refs")
 os.makedirs(OUT, exist_ok=True)
@@ -82,6 +83,14 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)),
         y = exciter_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, mode=mo, source=so, drive=dr, tilt=tl)
         dump(nom, sig, y)
         man.append(f"exciter {nom} {fs} {sh} {f0} {q} {g} {mo} {so} {dr} {tl}")
+E2CFG = [("mordant_chaud", "auto", "bell", 3000.0, 0.71, 6.0, 2.5, 0.0), ("doux", "auto", "bell", 1000.0, 1.0, 8.0, 1.5, 0.0), ("chaud", "auto", "highshelf", 9600.0, 0.71, 5.0, 3.0, 0.0),
+         ("mordant", "auto", "lowshelf", 200.0, 0.71, 6.0, 2.5, 0.0), ("mordant_chaud", "band", "bell", 3000.0, 1.0, 6.0, 2.5, 0.7), ("mordant", "band", "highshelf", 8000.0, 0.71, 6.0, 4.0, -0.5)]
+for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)), (96000, "syn96", synth(96000))):
+    for i, (pr, so, sh, f0, q, g, dr, tl) in enumerate(E2CFG):
+        nom = f"exc2_{nom_sig}_{i}"
+        y = exciter_v2_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, profil=pr, source=so, drive=dr, tilt=tl)
+        dump(nom, sig, y)
+        man.append(f"exciter2 {nom} {fs} {sh} {f0} {q} {g} {pr} {so} {dr} {tl}")
 TCFG = [("bell", 3000.0, 0.7, -9.0, 0.5), ("bell", 632.0, 1.2, -4.0, 1.0), ("bell", 250.0, 0.71, 6.0, 0.2), ("highshelf", 9600.0, 0.71, -6.0, 0.5),
         ("lowshelf", 120.0, 0.71, -6.0, 0.8), ("bell", 8000.0, 2.0, -9.0, 0.0)]
 for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44", synth(44100)[:int(4 * 44100)]), (96000, "syn96", synth(96000)[:int(3 * 96000)])):
@@ -107,7 +116,7 @@ for nom, cfg in (("type", config_type()), ("variee", cfg2)):
     np.asarray(y, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.out.f64"))
     with open(os.path.join(OUT, f"engine_{nom}.cfg"), "w", encoding="utf-8") as f:
         for s in cfg:
-            f.write(" ".join(str(v) for v in (int(s.get("on", True)), s["type"], s["shape"], s["f0"], s["q"], s["gain_db"], s.get("canal", "stereo"), s.get("mode", "iron"),
+            f.write(" ".join(str(v) for v in (int(s.get("on", True)), s["type"], s["shape"], s["f0"], s["q"], s["gain_db"], s.get("canal", "stereo"), s.get("profil", "mordant_chaud"),
                                             s.get("source", "auto"), s.get("width", 0.5), s.get("cible") or "transitoires", s.get("time_ms") or 0.0, s.get("sens", 0.85),
                                             s.get("amount", 50.0), s.get("release_ms", 150.0))) + "\n")
     man.append(f"engine engine_{nom} {int(fs0)} x 0 0")

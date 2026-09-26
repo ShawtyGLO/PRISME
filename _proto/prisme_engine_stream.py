@@ -7,7 +7,8 @@ Tame et du Shape (qui n'ont aucune latence propre) sont retardés d'autant pour 
 → à déclarer à l'hôte (`setLatencySamples(20)`) ; constante, que des Exciters soient actifs ou non (les hôtes n'aiment pas une latence qui change).
 """
 import numpy as np
-from prisme_exciter_stream import ExciterStream, Delai, D_OS
+from prisme_exciter_v2_stream import ExciterV2Stream
+from prisme_exciter_stream import Delai, D_OS
 from prisme_tame import Tame
 from prisme_shape import Shape
 from prisme_lift import Lift
@@ -26,13 +27,14 @@ class EngineStream:
             if not spec.get("on", True) or spec["gain_db"] == 0.0:
                 continue
             canal = spec.get("canal", "stereo")
-            n_inst = 2 if canal == "stereo" else 1
+            n_inst = 2 if (canal == "stereo" and spec["type"] != "exciter") else 1          # Exciter v2 : une seule chaîne (lié)
             self.bandes.append((spec, canal, [self._creer(spec) for _ in range(n_inst)], [Delai(LATENCE) for _ in range(n_inst)]))
 
     def _creer(self, spec):
         t, sh, f0, q, g = spec["type"], spec["shape"], spec["f0"], spec["q"], spec["gain_db"]
         if t == "exciter":
-            return ExciterStream(self.fs, shape=sh, f0=f0, q=q, gain_db=g, mode=spec.get("mode", "iron"), source=spec.get("source", "auto"))
+            return ExciterV2Stream(self.fs, shape=sh, f0=f0, q=q, gain_db=g, profil=spec.get("profil", "mordant_chaud"), source=spec.get("source", "auto"),
+                                   drive=spec.get("drive", 2.5), tilt=spec.get("tilt", 0.0))
         if t == "tame":
             return Tame(self.fs, sh, f0, q, g, spec.get("width", 0.5))
         if t == "shape":
@@ -53,7 +55,10 @@ class EngineStream:
         L, R = x[:, 0], x[:, 1]
         out = np.stack([self.sec[0].push(L), self.sec[1].push(R)], axis=1)
         for spec, canal, objs, dels in self.bandes:
-            if canal == "stereo":
+            if canal == "stereo" and spec["type"] == "exciter":
+                dm = self._delta(spec, objs[0], dels[0], (L + R) / 2)
+                d = np.stack([dm, dm], axis=1)
+            elif canal == "stereo":
                 d = np.stack([self._delta(spec, objs[0], dels[0], L), self._delta(spec, objs[1], dels[1], R)], axis=1)
             elif canal == "mid":
                 dm = self._delta(spec, objs[0], dels[0], (L + R) / 2)

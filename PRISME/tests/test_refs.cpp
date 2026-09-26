@@ -4,6 +4,7 @@
 #include "../Source/Dsp/Lift.h"
 #include "../Source/Dsp/Shape.h"
 #include "../Source/Dsp/Exciter.h"
+#include "../Source/Dsp/ExciterV2.h"
 #include "../Source/Dsp/Tame.h"
 #include "../Source/Dsp/Engine.h"
 #include <cstdlib>
@@ -37,7 +38,7 @@ int main (int argc, char** argv)
     std::ifstream man (dir + "/manifest.txt");
     if (! man) { std::cout << "manifest introuvable dans " << dir << "\n"; return 2; }
     int total = 0, echecs = 0;
-    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0, pireEngine = 0;
+    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0, pireEngine = 0, pireExc2 = 0;
     const double tolTame = 1e-7;                         // −140 dB ; le prototype calcule sa chaîne spectrale en float32 (voir Tame.h)
     std::string ligne;
     while (std::getline (man, ligne))
@@ -97,6 +98,24 @@ int main (int argc, char** argv)
             pireExc = std::max (pireExc, e);                 // tolérance −140 dB : la projection divise par une énergie proche de 1e-12 sur les passages quasi silencieux
             if (e > 1e-7) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
+        else if (type == "exciter2")
+        {
+            double g, dr, tl;
+            std::string pr, so;
+            is >> g >> pr >> so >> dr >> tl;
+            const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
+            ++total;
+            if (xs.empty() || xs.size() != ref.size()) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
+            double crete = 0, e = 0;
+            for (double v : ref) crete = std::max (crete, std::abs (v));
+            const ProfilExc p = pr == "doux" ? ProfilExc::Doux : pr == "chaud" ? ProfilExc::Chaud : pr == "mordant" ? ProfilExc::Mordant : ProfilExc::MordantChaud;
+            ExciterV2 ex;
+            ex.prepare (fs, forme (sh), f0, q, g, p, so == "auto" ? SourceExc::Auto : SourceExc::Bande, dr, tl);
+            for (size_t i = 0; i < xs.size(); ++i) e = std::max (e, std::abs (ex.process (xs[i]) - ref[i]));
+            e /= std::max (crete, 1e-30);
+            pireExc2 = std::max (pireExc2, e);
+            if (e > 1e-7) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
+        }
         else if (type == "tame")
         {
             double g, wd;
@@ -128,7 +147,7 @@ int main (int argc, char** argv)
                 b.type = ltype == "exciter" ? TypeBande::Exciter : ltype == "tame" ? TypeBande::Tame : ltype == "shape" ? TypeBande::Shape : TypeBande::Lift;
                 b.forme = forme (lforme); b.f0 = lf0; b.q = lq; b.gainDb = lg;
                 b.canal = lcanal == "mid" ? Canal::Mid : lcanal == "side" ? Canal::Side : lcanal == "left" ? Canal::Left : lcanal == "right" ? Canal::Right : Canal::Stereo;
-                b.mode = lmode == "iron" ? ModeSat::Iron : lmode == "triode" ? ModeSat::Triode : lmode == "diode" ? ModeSat::Diode : lmode == "classa" ? ModeSat::ClassA : ModeSat::Rect;
+                b.profil = lmode == "doux" ? ProfilExc::Doux : lmode == "chaud" ? ProfilExc::Chaud : lmode == "mordant" ? ProfilExc::Mordant : ProfilExc::MordantChaud;
                 b.source = lsource == "auto" ? SourceExc::Auto : SourceExc::Bande;
                 b.width = lw; b.cible = lcible == "sustain" ? Shape::Cible::Sustain : Shape::Cible::Transitoires;
                 b.timeMs = ltime; b.sens = lsens; b.amount = lam; b.releaseMs = lrel;
@@ -180,25 +199,25 @@ int main (int argc, char** argv)
             if (e > 1e-9) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
     }
-    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; tame : " << pireTame << " ; engine : " << pireEngine << " (écarts relatifs max)\n";
-    // W01 : une bande NEUVE, préchauffée avec 1,5 s d'historique, doit avoir le niveau de delta d'une bande vivante depuis le début
+    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; exciter v2 : " << pireExc2 << " ; tame : " << pireTame << " ; engine : " << pireEngine << " (écarts relatifs max)\n";
+    // W01 : une bande NEUVE, préchauffée avec 2,5 s d historique, doit avoir le niveau de delta d'une bande vivante depuis le début
     {
         const auto m = lire (dir + "/music12.f64");
         if (! m.empty())
         {
             const size_t n = m.size() / 2;
             const double fs = 48000.0;
-            const size_t t0 = (size_t) (6.0 * fs), hist = (size_t) (1.5 * fs);
-            struct Cfg { TypeBande t; Forme f; double f0, q, g; ModeSat mo; const char* nom; };
-            const Cfg cfgs[] = { { TypeBande::Exciter, Forme::Cloche, 3000, 0.71, 2, ModeSat::Iron, "Exciter cloche 3 k +2" },
-                                 { TypeBande::Exciter, Forme::ShelfGrave, 42, 0.71, 3, ModeSat::Iron, "Exciter shelf grave 42 +3" },
-                                 { TypeBande::Exciter, Forme::ShelfAigu, 9600, 0.71, 5, ModeSat::Iron, "Exciter shelf aigu 9,6 k +5" },
-                                 { TypeBande::Tame, Forme::Cloche, 3000, 0.7, -9, ModeSat::Iron, "Tame cloche 3 k -9" },
-                                 { TypeBande::Shape, Forme::Cloche, 250, 1.0, 6, ModeSat::Iron, "Shape cloche 250 +6" },
-                                 { TypeBande::Lift, Forme::Cloche, 3000, 0.7, 6, ModeSat::Iron, "Lift cloche 3 k +6" } };
+            const size_t t0 = (size_t) (6.0 * fs), hist = (size_t) (2.5 * fs);
+            struct Cfg { TypeBande t; Forme f; double f0, q, g; ProfilExc mo; const char* nom; };
+            const Cfg cfgs[] = { { TypeBande::Exciter, Forme::Cloche, 3000, 0.71, 2, ProfilExc::MordantChaud, "Exciter cloche 3 k +2" },
+                                 { TypeBande::Exciter, Forme::ShelfGrave, 42, 0.71, 3, ProfilExc::MordantChaud, "Exciter shelf grave 42 +3" },
+                                 { TypeBande::Exciter, Forme::ShelfAigu, 9600, 0.71, 5, ProfilExc::MordantChaud, "Exciter shelf aigu 9,6 k +5" },
+                                 { TypeBande::Tame, Forme::Cloche, 3000, 0.7, -9, ProfilExc::MordantChaud, "Tame cloche 3 k -9" },
+                                 { TypeBande::Shape, Forme::Cloche, 250, 1.0, 6, ProfilExc::MordantChaud, "Shape cloche 250 +6" },
+                                 { TypeBande::Lift, Forme::Cloche, 3000, 0.7, 6, ProfilExc::MordantChaud, "Lift cloche 3 k +6" } };
             for (const auto& c : cfgs)
             {
-                BandeSpec sp; sp.type = c.t; sp.forme = c.f; sp.f0 = c.f0; sp.q = c.q; sp.gainDb = c.g; sp.mode = c.mo; sp.amount = 70.0;
+                BandeSpec sp; sp.type = c.t; sp.forme = c.f; sp.f0 = c.f0; sp.q = c.q; sp.gainDb = c.g; sp.profil = c.mo; sp.amount = 70.0;
                 BandeProc vivant, neuve, neuveFroide;
                 vivant.prepare (fs, sp); neuve.prepare (fs, sp); neuveFroide.prepare (fs, sp);
                 std::vector<double> dv, dn, dc;
@@ -214,6 +233,7 @@ int main (int argc, char** argv)
                 double pireW = 0, pireC = 0;
                 for (size_t a = 0; a + 2400 <= (size_t) (2.0 * fs); a += 2400)         // tranches de 50 ms sur les 2 premières secondes
                 {
+                    if (tranche (dv, a, a + 2400) < -100.0) continue;                 // wet négligeable (< −100 dBFS) : l'écart en dB n'a pas de sens
                     pireW = std::max (pireW, std::abs (tranche (dn, a, a + 2400) - tranche (dv, a, a + 2400)));
                     pireC = std::max (pireC, std::abs (tranche (dc, a, a + 2400) - tranche (dv, a, a + 2400)));
                 }
