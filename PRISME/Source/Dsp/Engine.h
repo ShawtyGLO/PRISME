@@ -38,12 +38,14 @@ struct BandeSpec
     double timeMs = 0.0, sens = 0.85;                       // timeMs <= 0 : durée par défaut
     // Lift
     double amount = 50.0, releaseMs = 150.0;
+    // Liaison stéréo PARTIELLE des détecteurs L/R (Tame, Shape, Lift ; canal Stéréo) : 0 = indépendants, 1 = mêmes décisions (défaut 0,5)
+    double link = 0.5;
 
     bool actif() const { return on && gainDb != 0.0; }      // gain 0 : sortie = entrée retardée exactement
     bool operator== (const BandeSpec& o) const
     {
         return on == o.on && type == o.type && forme == o.forme && f0 == o.f0 && q == o.q && gainDb == o.gainDb && canal == o.canal && profil == o.profil
-            && source == o.source && drive == o.drive && tilt == o.tilt && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs;
+            && source == o.source && drive == o.drive && tilt == o.tilt && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs && link == o.link;
     }
     bool operator!= (const BandeSpec& o) const { return ! (*this == o); }
 };
@@ -86,6 +88,8 @@ public:
         }
     }
 
+    void setLink (double l) { spec.link = l; }                                       // en direct
+
     void setTilt (double t)
     {
         spec.tilt = t;
@@ -107,6 +111,7 @@ public:
         {
             case Canal::Stereo:
                 if (spec.type == TypeBande::Exciter) { const double d = delta (0, 0.5 * (L + R)); dL = dR = d; }      // Exciter : lié (milieu)
+                else if (spec.link > 0.0 && spec.type != TypeBande::Exciter) pair (L, R, dL, dR);
                 else { dL = delta (0, L); dR = delta (1, R); }
                 break;
             case Canal::Mid:   { const double d = delta (0, 0.5 * (L + R)); dL = dR = d; break; }
@@ -117,6 +122,57 @@ public:
     }
 
 private:
+    // Canal Stéréo de Tame / Shape / Lift : détecteurs L/R liés PARTIELLEMENT au niveau de l'activité :  a_c' = (1 − λ)·a_c + λ·a_lié
+    //   Tame : a = réduction par bande (max des deux) · Shape : poids transitoire (max) · Lift : courbe s (MIN : le canal le plus fort commande)
+    inline void pair (double L, double R, double& dL, double& dR)
+    {
+        const double lam = spec.link;
+        double yL = 0, yR = 0;
+        switch (spec.type)
+        {
+            case TypeBande::Tame:
+            {
+                auto &a = *tame[0], &b = *tame[1];
+                a.analyse (L);
+                b.analyse (R);
+                if (a.isPoint())
+                {
+                    a.stage1(); b.stage1();
+                    float *ra = a.reduData(), *rb = b.reduData();
+                    for (int k = 0; k < a.bandCount(); ++k)
+                    {
+                        const float xa = ra[k], xb = rb[k], mx = std::max (xa, xb);
+                        ra[k] = (float) ((1.0 - lam) * (double) xa + lam * (double) mx);
+                        rb[k] = (float) ((1.0 - lam) * (double) xb + lam * (double) mx);
+                    }
+                    a.stage2(); b.stage2();
+                }
+                yL = a.synth (L);
+                yR = b.synth (R);
+                break;
+            }
+            case TypeBande::Shape:
+            {
+                double bL, bR;
+                const double aL = shape[0]->detect (L, bL), aR = shape[1]->detect (R, bR), lie = std::max (aL, aR);
+                yL = shape[0]->apply (L, bL, (1.0 - lam) * aL + lam * lie);
+                yR = shape[1]->apply (R, bR, (1.0 - lam) * aR + lam * lie);
+                break;
+            }
+            case TypeBande::Lift:
+            {
+                double bL, bR;
+                const double aL = lift[0]->detect (L, bL), aR = lift[1]->detect (R, bR), lie = std::min (aL, aR);
+                yL = lift[0]->apply (L, bL, (1.0 - lam) * aL + lam * lie);
+                yR = lift[1]->apply (R, bR, (1.0 - lam) * aR + lam * lie);
+                break;
+            }
+            default: break;
+        }
+        dL = retard[0].push (yL - L);
+        dR = retard[1].push (yR - R);
+    }
+
     inline double delta (int i, double z)
     {
         const size_t k = (size_t) i;

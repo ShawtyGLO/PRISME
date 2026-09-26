@@ -376,7 +376,7 @@ void BandCard::rebuild (int b)
     addAndMakeVisible (*onButton);
     forme = std::make_unique<Seg> (ap, pp::pid (b, "forme"), pp::formeNames(), colour);
     addAndMakeVisible (*forme);
-    canal = std::make_unique<Seg> (ap, pp::pid (b, "canal"), pp::canalNames(), colour);
+    canal = std::make_unique<Seg> (ap, pp::pid (b, "canal"), pp::canalNames(), colour, [safe = juce::Component::SafePointer<BandCard> (self)] { if (safe != nullptr) safe->rebuild (safe->band); });
     addAndMakeVisible (*canal);
 
     auto addPos = [&] (const char* id, const juce::String& label, std::function<juce::String (double)> f)
@@ -420,6 +420,20 @@ void BandCard::rebuild (int b)
         U8 ("Agit sur les transitoires ou sur le sustain de la bande, dans les deux sens. Durée : combien de temps dure l'effet après une attaque."),
         U8 ("Relève ce qui est faible dans la zone (gain +) ou l'abaisse (gain −). Amount : plus il monte, plus de matière est concernée. Protection du souffle automatique.") };
     note = notes[type];
+    linkSlider.reset(); linkAttach.reset();
+    if (type != 0 && juce::roundToInt (pp::raw (ap, pp::pid (b, "canal"))) == 0)         // liaison des détecteurs L/R : Tame, Shape, Lift en canal Stéréo
+    {
+        linkSlider = std::make_unique<juce::Slider> (juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
+        linkSlider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 22);
+        linkSlider->setNumDecimalPlacesToDisplay (0);
+        linkSlider->textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; };
+        linkSlider->setColour (juce::Slider::trackColourId, colour);
+        linkSlider->setColour (juce::Slider::thumbColourId, col::txt);
+        linkSlider->setColour (juce::Slider::textBoxTextColourId, col::txt);
+        linkSlider->setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        linkAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (ap, pp::pid (b, "link"), *linkSlider);
+        addAndMakeVisible (*linkSlider);
+    }
     resized();
     repaint();
 }
@@ -473,7 +487,14 @@ void BandCard::resized()
         }
         for (auto& k : typeKnobs) { k->setBounds (cx, cy, Knob::preferredWidth() + 40 * (type == 3), Knob::preferredHeight()); cx += Knob::preferredWidth() + 10 + 40 * (type == 3); }
     }
-    noteRect = { x3, yBot, w3, bottomH };
+    if (linkSlider)
+    {
+        labels.push_back ({ U8 ("LIAISON L/R"), { x3, yBot, 200, 16 } });
+        linkSlider->setBounds (x3, yBot + 22, 215, 26);
+        noteRect = { x3 + 232, yBot, w3 - 232, bottomH };
+    }
+    else
+        noteRect = { x3, yBot, w3, bottomH };
 }
 
 void BandCard::paint (juce::Graphics& g)
@@ -491,7 +512,7 @@ void BandCard::paint (juce::Graphics& g)
         g.drawText (spaced, l.r, juce::Justification::centredLeft);
     }
     g.setFont (12.0f);
-    g.drawFittedText (note, noteRect, juce::Justification::topLeft, 3);
+    g.drawFittedText (note, noteRect, juce::Justification::topLeft, 5);
 }
 
 // ------------------------------------------------------------------ éditeur

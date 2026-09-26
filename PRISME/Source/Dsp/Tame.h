@@ -106,9 +106,18 @@ public:
         count = 0;
     }
 
+    inline bool isPoint() const { return (count % DEC) == 0; }
+
     inline double process (double x)
     {
-        const bool point = (count % DEC) == 0;
+        analyse (x);
+        if (isPoint()) { stage1(); stage2(); }
+        return synth (x);
+    }
+
+    // Analyse : N biquads + 2 enveloppes par bande (à appeler avant stage1 / synth)
+    inline void analyse (double x)
+    {
         const int n = N;
         double* z1 = aZ1.data(); double* z2 = aZ2.data(); double* pef = ef.data(); double* pes = es.data();
         const double *b0 = aB0.data(), *b1 = aB1.data(), *b2 = aB2.data(), *a1 = aA1.data(), *a2 = aA2.data();
@@ -122,7 +131,12 @@ public:
             pef[k] = ocf[k] * ab + pcf[k] * pef[k];
             pes[k] = ocs[k] * ab + pcs[k] * pes[k];
         }
-        if (point) decimatedStep();
+    }
+
+    // Synthèse (après stage2 aux points décimés)
+    inline double synth (double x)
+    {
+        const bool point = isPoint();
         const int na = (int) act.size();
         double *cp = cPrev.data(), *cc = cCur.data(), *tm = term.data(), *sz1 = sZ1.data(), *sz2 = sZ2.data();
         const double *sb0 = sB0.data(), *sb1 = sB1.data(), *sb2 = sB2.data(), *sa1 = sA1.data(), *sa2 = sA2.data();
@@ -241,7 +255,12 @@ private:
         }
     }
 
-    void decimatedStep()
+public:
+    // Détection aux points décimés en deux temps : stage1 (jusqu'à la réduction par bande `redu`, où agit la liaison stéréo) puis stage2 (lissage temporel, normalisation locale)
+    float* reduData() { return redu.data(); }
+    int bandCount() const { return N; }
+
+    void stage1()
     {
         for (int k = 0; k < N; ++k)
             Lf[(size_t) k] = (float) (20.0 * std::log10 (std::max (es[(size_t) k], 0.5 * ef[(size_t) k]) * (kPi / 2.0) + 1e-12));
@@ -267,6 +286,10 @@ private:
         maxFilter (redf, redm, 2 * nP + 1);                       // plateau
         uniformFilter (redm, redu, sizeS);
         for (int k = 0; k < N; ++k) redu[(size_t) k] = (float) ((double) redu[(size_t) k] * w[(size_t) k]);
+    }
+
+    void stage2()
+    {
         // lissage temporel attaque / relâchement à cadence décimée, puis normalisation locale
         for (int k = 0; k < N; ++k)
         {
@@ -291,6 +314,8 @@ private:
         lastRed = redD;
         lastS = SD;
     }
+
+private:
 
     double fs = 48000, sign = -1, depth = 9, cAtt = 0, cRel = 0;
     float ratio = 1, seuil = 4.5f;

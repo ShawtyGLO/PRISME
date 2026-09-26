@@ -37,6 +37,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "on"), 1 }, n + "active", true));
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "solo"), 1 }, n + U8 ("delta (écoute seule)"), false));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "tilt"), 1 }, n + "tilt (mode Bande)", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+        layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "link"), 1 }, n + "liaison L/R (Tame, Shape, Lift)", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "drive"), 1 }, n + "saturation", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.71f));      // 0,71 → drive 2,5
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "type"), 1 }, n + "type", typeNames(), defType[b]));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "forme"), 1 }, n + "forme", formeNames(), defForme[b]));
@@ -101,6 +102,7 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     sp.profil  = (prisme::ProfilExc) juce::jlimit (0, 3, juce::roundToInt (raw (s, pid (b, "mode"))));      // Doux, Chaud, Mordant, Mordant chaud
     sp.source  = (prisme::SourceExc) juce::roundToInt (raw (s, pid (b, "source")));
     sp.tilt    = raw (s, pid (b, "tilt"));
+    sp.link    = raw (s, pid (b, "link"));
     sp.drive   = driveFromKnob (raw (s, pid (b, "drive")));
     sp.width   = raw (s, pid (b, "width"));
     sp.cible   = (prisme::Shape::Cible) juce::roundToInt (raw (s, pid (b, "cible")));

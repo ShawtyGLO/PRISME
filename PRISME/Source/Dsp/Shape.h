@@ -45,7 +45,16 @@ public:
 
     inline double process (double x, double* gOut = nullptr)
     {
+        double b;
+        const double Tl = detect (x, b);
+        return apply (x, b, Tl, gOut);
+    }
+
+    // Détection : renvoie le poids « transitoire » lissé Tl (avant le choix transitoires / sustain) et le signal de la zone b ; la liaison stéréo agit sur Tl.
+    inline double detect (double x, double& bOut)
+    {
         const double b = band.process (x);
+        bOut = b;
         zf = (1.0 - cf) * std::abs (b) + cf * zf;                  // enveloppe rapide
         const double Ef = zf, Efd = hist[(size_t) pos];            // E_f retardée de D échantillons
         hist[(size_t) pos] = Ef;
@@ -55,7 +64,12 @@ public:
         T *= std::clamp ((20.0 * std::log10 (Ef * (kPi / 2.0) + 1e-12) + 95.0) / 10.0, 0.0, 1.0);   // porte absolue −95 dBFS
         yHold = std::max (T, cRel * yHold);                        // tient et relâche sur la durée choisie
         zAtt = (1.0 - cAtt) * yHold + cAtt * zAtt;                 // attaque du gain bornée
-        const double poids = cible == Cible::Transitoires ? zAtt : 1.0 - zAtt;
+        return zAtt;
+    }
+
+    inline double apply (double x, double b, double Tl, double* gOut = nullptr) const
+    {
+        const double poids = cible == Cible::Transitoires ? Tl : 1.0 - Tl;
         const double g = 1.0 + (A - 1.0) * poids;
         if (gOut) *gOut = g;
         return x + (g - 1.0) * b;

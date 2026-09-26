@@ -12,6 +12,7 @@ from prisme_exciter_stream import Delai, D_OS
 from prisme_tame import Tame
 from prisme_shape import Shape
 from prisme_lift import Lift
+from prisme_link import PAIRES
 
 LATENCE = D_OS
 
@@ -59,7 +60,12 @@ class EngineStream:
                 dm = self._delta(spec, objs[0], dels[0], (L + R) / 2)
                 d = np.stack([dm, dm], axis=1)
             elif canal == "stereo":
-                d = np.stack([self._delta(spec, objs[0], dels[0], L), self._delta(spec, objs[1], dels[1], R)], axis=1)
+                lam = float(spec.get("link", 0.5))                    # liaison partielle des détecteurs L/R (Tame, Shape, Lift)
+                if lam > 0.0:
+                    yL, yR = PAIRES[spec["type"]](objs[0], objs[1], L, R, lam)
+                    d = np.stack([dels[0].push(yL - L), dels[1].push(yR - R)], axis=1)
+                else:
+                    d = np.stack([self._delta(spec, objs[0], dels[0], L), self._delta(spec, objs[1], dels[1], R)], axis=1)
             elif canal == "mid":
                 dm = self._delta(spec, objs[0], dels[0], (L + R) / 2)
                 d = np.stack([dm, dm], axis=1)

@@ -86,6 +86,8 @@ private:
     std::vector<std::unique_ptr<prismeUi::Seg>> typeSegs;
     std::vector<juce::String> typeSegTitles;
     juce::String note;
+    std::unique_ptr<juce::Slider> linkSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> linkAttach;
     std::vector<Label> labels;
     juce::Rectangle<int> noteRect;
 };

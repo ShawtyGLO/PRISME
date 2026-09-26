@@ -18,6 +18,10 @@ from prisme_tame import tame_band
 from prisme_shape import shape_band
 from prisme_lift import lift_band
 from prisme_exciter_v2_stream import excite_v2_aligne
+from prisme_link import PAIRES
+from prisme_tame import Tame
+from prisme_shape import Shape
+from prisme_lift import Lift
 
 FREQS_DEFAUT = (42.0, 164.0, 632.0, 2800.0, 9600.0)                      # points de départ de Spectre : 5 bandes réparties sur le spectre
 FORMES_DEFAUT = ("lowshelf", "bell", "bell", "bell", "highshelf")
@@ -53,6 +57,17 @@ def delta_bande(x, fs, spec):
     L, R = x[:, 0], x[:, 1]
     z = np.zeros(len(L))
     if canal == "stereo":
+        lam = float(spec.get("link", 0.5))                        # liaison partielle des détecteurs L/R (Tame, Shape, Lift) ; 0 = indépendants
+        if lam > 0.0 and spec["type"] in PAIRES:
+            t, sh, f0, q, g = spec["type"], spec["shape"], spec["f0"], spec["q"], spec["gain_db"]
+            mk = {"tame": lambda: Tame(fs, sh, f0, q, g, spec.get("width", 0.5)),
+                  "shape": lambda: Shape(fs, spec.get("cible", "transitoires"), sh, f0, q, g, None, spec.get("time_ms"), spec.get("sens", 0.85)),
+                  "lift": lambda: Lift(fs, sh, f0, q, g, spec.get("amount", 50.0), spec.get("release_ms", 150.0))}[t]
+            oL, oR = mk(), mk()
+            yL, yR = np.empty(len(L)), np.empty(len(L))
+            for i in range(0, len(L), 8192):
+                yL[i:i + 8192], yR[i:i + 8192] = PAIRES[t](oL, oR, L[i:i + 8192], R[i:i + 8192], lam)
+            return np.stack([yL - L, yR - R], axis=1)
         return np.stack([fn(L) - L, fn(R) - R], axis=1)
     if canal == "mid":
         M = (L + R) / 2

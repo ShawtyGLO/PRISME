@@ -190,7 +190,8 @@ void PrismeProcessor::syncBands (bool immediate)
         auto structure = spec;
         structure.gainDb = 0.0;
         structure.drive = 0.0;
-        structure.tilt = 0.0;                                                 // gain et saturation se règlent en direct : pas de reconstruction
+        structure.tilt = 0.0;
+        structure.link = 0.0;                                                 // gain et saturation se règlent en direct : pas de reconstruction
 
         if (immediate)
         {
@@ -209,6 +210,8 @@ void PrismeProcessor::syncBands (bool immediate)
             s.lastDrive = spec.drive;
             s.tiltTarget.store (spec.tilt);
             s.lastTilt = spec.tilt;
+            s.linkTarget.store (spec.link);
+            s.lastLink = spec.link;
             s.msgStruct = structure;
             s.msgAlive = spec.actif();
             s.zeroSince = 0;
@@ -236,6 +239,7 @@ void PrismeProcessor::syncBands (bool immediate)
         s.gainTarget.store ((float) spec.gainDb);
         s.driveTarget.store (spec.drive);
         s.tiltTarget.store (spec.tilt);
+        s.linkTarget.store (spec.link);
         if (! s.msgAlive || structure != s.msgStruct || s.needRebuild.exchange (false))
         {
             builder->request (b, spec);
@@ -317,6 +321,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                         s.lastDrive = s.driveTarget.load();
                         s.warm->setTilt (s.tiltTarget.load());
                         s.lastTilt = s.tiltTarget.load();
+                        s.warm->setLink (s.linkTarget.load());
+                        s.lastLink = s.linkTarget.load();
                         s.old = std::move (s.cur);
                         s.cur = std::move (s.warm);
                         s.fadePos = 0;
@@ -330,6 +336,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             if (s.cur && dv != s.lastDrive) { s.cur->setDrive (dv); s.lastDrive = dv; }
             const double tv = s.tiltTarget.load();
             if (s.cur && tv != s.lastTilt) { s.cur->setTilt (tv); s.lastTilt = tv; }
+            const double lk = s.linkTarget.load();
+            if (s.cur && lk != s.lastLink) { s.cur->setLink (lk); s.lastLink = lk; }
         }
 
         // ---- entrée : anneau d'historique + conversion en double ----

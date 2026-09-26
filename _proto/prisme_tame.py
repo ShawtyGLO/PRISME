@@ -88,6 +88,10 @@ class Tame:
 
     def _detect(self, x):
         """Analyse, niveaux, excès, réduction et normalisation aux points décimés ; renvoie (n, idx, m, red_d, S_d)."""
+        return self._detect2(*self._detect1(x))
+
+    def _detect1(self, x):
+        """Premier temps : analyse jusqu'à la réduction par bande `red` (float32, N × m ; None si aucun point) — c'est ICI que la liaison stéréo agit."""
         n, N = len(x), self.N
         idx = np.arange((-self.count) % DEC, n, DEC)                       # points de décimation alignés sur l'indice absolu
         m = len(idx)
@@ -112,6 +116,14 @@ class Tame:
             red = maximum_filter1d(red, size=2 * self.n_p + 1, axis=0, mode="nearest")            # plateau
             red = uniform_filter1d(red, size=self.size_s, axis=0, mode="nearest")
             red = (red * self.w[:, None]).astype(np.float32)
+        else:
+            red = None
+        return n, idx, m, red
+
+    def _detect2(self, n, idx, m, red):
+        """Second temps : lissage attaque / relâchement à cadence décimée puis normalisation locale ; renvoie (n, idx, m, red_d, S_d)."""
+        N = self.N
+        if m > 0:
             ra, self.zra = lfilter([1 - self.c_att], [1, -self.c_att], red, axis=1, zi=self.zra)
             rr, self.zrr = lfilter([1 - self.c_rel], [1, -self.c_rel], red, axis=1, zi=self.zrr)
             red_d = np.maximum(ra, rr)
@@ -121,8 +133,8 @@ class Tame:
             red_d = np.empty((N, 0), dtype=np.float32); S_d = np.empty((N, 0), dtype=np.float32)
         return n, idx, m, red_d, S_d
 
-    def process(self, x, keep=False):
-        n, idx, m, red_d, S_d = self._detect(x)
+    def process(self, x, keep=False, pre=None):
+        n, idx, m, red_d, S_d = self._detect(x) if pre is None else pre
         N = self.N
         if self.interp:
             return self._sortie_interp(x, n, idx, m, red_d, S_d, keep)

@@ -49,7 +49,16 @@ public:
     // Traite un échantillon ; renvoie la sortie. `gOut` (facultatif) reçoit le gain linéaire g appliqué à la zone.
     inline double process (double x, double* gOut = nullptr)
     {
+        double b;
+        const double s = detect (x, b);
+        return apply (x, b, s, gOut);
+    }
+
+    // Détection : renvoie la courbe de relevé s (0 … 1, porte de souffle comprise) et le signal de la zone b ; la liaison stéréo agit sur s.
+    inline double detect (double x, double& bOut)
+    {
         const double b = band.process (x), ab = std::abs (b);
+        bOut = b;
         if (! started)                                         // démarrage à chaud : le plancher ne part pas de zéro
         {
             ea.warm (ab); es.warm (ab);
@@ -71,6 +80,11 @@ public:
             const double Ls = 20.0 * std::log10 (Es * (kPi / 2.0) + 1e-12);
             s *= smoothstep ((Ls - N - marge) / 6.0);
         }
+        return s;
+    }
+
+    inline double apply (double x, double b, double s, double* gOut = nullptr) const
+    {
         const double g = std::pow (10.0, G * s / 20.0);
         if (gOut) *gOut = g;
         return x + (g - 1.0) * b;

@@ -75,6 +75,8 @@ private:
         double lastDrive = 1.5;
         std::atomic<double> tiltTarget { 0.0 };
         double lastTilt = 0.0;
+        std::atomic<double> linkTarget { 0.5 };
+        double lastLink = 0.5;
         std::atomic<bool> needRebuild { false };
         // thread message
         prisme::BandeSpec msgStruct;

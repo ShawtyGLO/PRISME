@@ -54,6 +54,11 @@ class Shape:
         self.y_hold = 0.0
 
     def process(self, x, keep=False):
+        b, Tl = self.detecte(x)
+        return self.applique(x, b, Tl, keep)
+
+    def detecte(self, x):
+        """Renvoie (b, Tl) : signal de la zone et poids « transitoire » lissé (avant le choix transitoires / sustain) — la liaison stéréo agit sur Tl."""
         n = len(x)
         b, self.zb = lfilter(self.b, self.a, x, zi=self.zb)
         Ef, self.zf = lfilter([1 - self.cf], [1, -self.cf], np.abs(b), zi=self.zf)
@@ -65,6 +70,9 @@ class Shape:
         T *= np.clip((20.0 * np.log10(Ef * (np.pi / 2) + 1e-12) + 95.0) / 10.0, 0.0, 1.0)     # porte absolue −95 dBFS
         Th, self.y_hold = _tient_relache(T, self.c_rel, self.y_hold)                            # tient et relâche sur la durée choisie
         Tl, self.z_att = lfilter([1 - self.c_att], [1, -self.c_att], Th, zi=self.z_att)         # attaque du gain bornée
+        return b, Tl
+
+    def applique(self, x, b, Tl, keep=False):
         poids = Tl if self.cible == "transitoires" else 1.0 - Tl
         g = 1.0 + (self.A - 1.0) * poids
         y = x + (g - 1.0) * b

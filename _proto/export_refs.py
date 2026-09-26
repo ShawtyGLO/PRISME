@@ -107,10 +107,16 @@ cfg2[1].update(type="exciter", gain_db=5.0, mode="triode", source="band", canal=
 cfg2[2].update(type="lift", gain_db=-6.0, amount=60.0, release_ms=300.0, canal="side")
 cfg2[3].update(type="tame", gain_db=4.0, width=0.3, canal="right")
 cfg2[4].update(type="shape", cible="sustain", gain_db=-4.0, time_ms=None, canal="mid")
+cfg3 = config_type()
+cfg3[0].update(type="tame", gain_db=-6.0, width=0.5, canal="stereo", link=0.5)
+cfg3[1].update(type="tame", shape="highshelf", f0=8000.0, gain_db=-4.0, width=0.3, canal="stereo", link=1.0)
+cfg3[2].update(type="lift", gain_db=5.0, amount=80.0, canal="stereo", link=0.3)
+cfg3[3].update(type="shape", cible="sustain", gain_db=-4.0, canal="stereo", link=0.8)
+cfg3[4].update(type="tame", gain_db=-3.0, canal="stereo", link=0.0)
 xs_full = load(SRC)[1]
 xstereo = np.ascontiguousarray(xs_full[int(30 * fs0): int(32 * fs0)])
 np.asarray(np.ascontiguousarray(xs_full[int(30 * fs0): int(42 * fs0)]), dtype="<f8").tofile(os.path.join(OUT, "music12.f64"))     # 12 s stéréo entrelacées : test de préchauffage
-for nom, cfg in (("type", config_type()), ("variee", cfg2)):
+for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3)):
     y = traite(xstereo, int(fs0), cfg)
     np.asarray(xstereo, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.in.f64"))
     np.asarray(y, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.out.f64"))
@@ -118,7 +124,7 @@ for nom, cfg in (("type", config_type()), ("variee", cfg2)):
         for s in cfg:
             f.write(" ".join(str(v) for v in (int(s.get("on", True)), s["type"], s["shape"], s["f0"], s["q"], s["gain_db"], s.get("canal", "stereo"), s.get("profil", "mordant_chaud"),
                                             s.get("source", "auto"), s.get("width", 0.5), s.get("cible") or "transitoires", s.get("time_ms") or 0.0, s.get("sens", 0.85),
-                                            s.get("amount", 50.0), s.get("release_ms", 150.0))) + "\n")
+                                            s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5))) + "\n")
     man.append(f"engine engine_{nom} {int(fs0)} x 0 0")
 for fs in (44100, 48000, 88200, 96000, 192000):
     for sh in ("bell", "highshelf", "lowshelf"):

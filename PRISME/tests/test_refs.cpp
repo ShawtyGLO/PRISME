@@ -139,8 +139,8 @@ int main (int argc, char** argv)
             std::vector<BandeSpec> specs;
             std::string ltype, lforme, lcanal, lmode, lsource, lcible;
             int on;
-            double lf0, lq, lg, lw, ltime, lsens, lam, lrel;
-            while (cfg >> on >> ltype >> lforme >> lf0 >> lq >> lg >> lcanal >> lmode >> lsource >> lw >> lcible >> ltime >> lsens >> lam >> lrel)
+            double lf0, lq, lg, lw, ltime, lsens, lam, lrel, llink;
+            while (cfg >> on >> ltype >> lforme >> lf0 >> lq >> lg >> lcanal >> lmode >> lsource >> lw >> lcible >> ltime >> lsens >> lam >> lrel >> llink)
             {
                 BandeSpec b;
                 b.on = on != 0;
@@ -150,7 +150,7 @@ int main (int argc, char** argv)
                 b.profil = lmode == "doux" ? ProfilExc::Doux : lmode == "chaud" ? ProfilExc::Chaud : lmode == "mordant" ? ProfilExc::Mordant : ProfilExc::MordantChaud;
                 b.source = lsource == "auto" ? SourceExc::Auto : SourceExc::Bande;
                 b.width = lw; b.cible = lcible == "sustain" ? Shape::Cible::Sustain : Shape::Cible::Transitoires;
-                b.timeMs = ltime; b.sens = lsens; b.amount = lam; b.releaseMs = lrel;
+                b.timeMs = ltime; b.sens = lsens; b.amount = lam; b.releaseMs = lrel; b.link = llink;
                 specs.push_back (b);
             }
             const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");

@@ -54,6 +54,11 @@ class Lift:
         self.T = seuil_dbfs(self.amount)
 
     def process(self, x, keep=False):
+        b, s = self.detecte(x)
+        return self.applique(x, b, s, keep)
+
+    def detecte(self, x):
+        """Renvoie (b, s) : signal de la zone et courbe de relevé s (0 … 1, porte de souffle comprise) — la liaison stéréo agit sur s."""
         n = len(x)
         b, self.zb = lfilter(self.b, self.a, x, zi=self.zb)
         ab = np.abs(b)
@@ -74,6 +79,9 @@ class Lift:
             Ls = 20.0 * np.log10(Es * (np.pi / 2) + 1e-12)                     # porte pilotée par le niveau LENT : pas de scintillement sur du souffle
             s = s * smoothstep((Ls - N - MARGE_DB) / 6.0)
         self.last_L = L
+        return b, s
+
+    def applique(self, x, b, s, keep=False):
         lift = self.G * s
         g = 10.0 ** (lift / 20.0)
         y = x + (g - 1.0) * b
