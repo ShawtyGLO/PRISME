@@ -84,13 +84,16 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)),
         dump(nom, sig, y)
         man.append(f"exciter {nom} {fs} {sh} {f0} {q} {g} {mo} {so} {dr} {tl}")
 E2CFG = [("mordant_chaud", "auto", "bell", 3000.0, 0.71, 6.0, 2.5, 0.0), ("doux", "auto", "bell", 1000.0, 1.0, 8.0, 1.5, 0.0), ("chaud", "auto", "highshelf", 9600.0, 0.71, 5.0, 3.0, 0.0),
-         ("mordant", "auto", "lowshelf", 200.0, 0.71, 6.0, 2.5, 0.0), ("mordant_chaud", "band", "bell", 3000.0, 1.0, 6.0, 2.5, 0.7), ("mordant", "band", "highshelf", 8000.0, 0.71, 6.0, 4.0, -0.5)]
+         ("mordant", "auto", "lowshelf", 200.0, 0.71, 6.0, 2.5, 0.0), ("mordant_chaud", "band", "bell", 3000.0, 1.0, 6.0, 2.5, 0.7), ("mordant", "band", "highshelf", 8000.0, 0.71, 6.0, 4.0, -0.5),
+         ("mordant_chaud", "auto", "bell", 3000.0, 0.71, 6.0, 2.5, 0.0, 0.0), ("mordant_chaud", "auto", "bell", 3000.0, 0.71, 6.0, 2.5, 0.0, 0.5), ("doux", "auto", "highshelf", 9600.0, 0.71, 6.0, 2.0, 0.0, 0.25)]
 for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)), (96000, "syn96", synth(96000))):
-    for i, (pr, so, sh, f0, q, g, dr, tl) in enumerate(E2CFG):
+    for i, cfg in enumerate(E2CFG):
+        pr, so, sh, f0, q, g, dr, tl = cfg[:8]
+        dn = cfg[8] if len(cfg) > 8 else 1.0
         nom = f"exc2_{nom_sig}_{i}"
-        y = exciter_v2_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, profil=pr, source=so, drive=dr, tilt=tl)
+        y = exciter_v2_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, profil=pr, source=so, drive=dr, tilt=tl, dens=dn)
         dump(nom, sig, y)
-        man.append(f"exciter2 {nom} {fs} {sh} {f0} {q} {g} {pr} {so} {dr} {tl}")
+        man.append(f"exciter2 {nom} {fs} {sh} {f0} {q} {g} {pr} {so} {dr} {tl} {dn}")
 TCFG = [("bell", 3000.0, 0.7, -9.0, 0.5), ("bell", 632.0, 1.2, -4.0, 1.0), ("bell", 250.0, 0.71, 6.0, 0.2), ("highshelf", 9600.0, 0.71, -6.0, 0.5),
         ("lowshelf", 120.0, 0.71, -6.0, 0.8), ("bell", 8000.0, 2.0, -9.0, 0.0)]
 for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44", synth(44100)[:int(4 * 44100)]), (96000, "syn96", synth(96000)[:int(3 * 96000)])):

@@ -191,7 +191,8 @@ void PrismeProcessor::syncBands (bool immediate)
         structure.gainDb = 0.0;
         structure.drive = 0.0;
         structure.tilt = 0.0;
-        structure.link = 0.0;                                                 // gain et saturation se règlent en direct : pas de reconstruction
+        structure.link = 0.0;
+        structure.dens = 0.0;                                                 // gain et saturation se règlent en direct : pas de reconstruction
 
         if (immediate)
         {
@@ -212,6 +213,8 @@ void PrismeProcessor::syncBands (bool immediate)
             s.lastTilt = spec.tilt;
             s.linkTarget.store (spec.link);
             s.lastLink = spec.link;
+            s.densTarget.store (spec.dens);
+            s.lastDens = spec.dens;
             s.msgStruct = structure;
             s.msgAlive = spec.actif();
             s.zeroSince = 0;
@@ -240,6 +243,7 @@ void PrismeProcessor::syncBands (bool immediate)
         s.driveTarget.store (spec.drive);
         s.tiltTarget.store (spec.tilt);
         s.linkTarget.store (spec.link);
+        s.densTarget.store (spec.dens);
         if (! s.msgAlive || structure != s.msgStruct || s.needRebuild.exchange (false))
         {
             builder->request (b, spec);
@@ -323,6 +327,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                         s.lastTilt = s.tiltTarget.load();
                         s.warm->setLink (s.linkTarget.load());
                         s.lastLink = s.linkTarget.load();
+                        s.warm->setDens (s.densTarget.load());
+                        s.lastDens = s.densTarget.load();
                         s.old = std::move (s.cur);
                         s.cur = std::move (s.warm);
                         s.fadePos = 0;
@@ -338,6 +344,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             if (s.cur && tv != s.lastTilt) { s.cur->setTilt (tv); s.lastTilt = tv; }
             const double lk = s.linkTarget.load();
             if (s.cur && lk != s.lastLink) { s.cur->setLink (lk); s.lastLink = lk; }
+            const double dn = s.densTarget.load();
+            if (s.cur && dn != s.lastDens) { s.cur->setDens (dn); s.lastDens = dn; }
         }
 
         // ---- entrée : anneau d'historique + conversion en double ----

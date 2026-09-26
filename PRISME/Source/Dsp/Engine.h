@@ -29,6 +29,7 @@ struct BandeSpec
     // Exciter
     ProfilExc profil = ProfilExc::MordantChaud;              // Exciter v2 : Doux / Chaud / Mordant / Mordant chaud
     SourceExc source = SourceExc::Auto;
+    double dens = 1.0;                                      // « Densité » de la porte de l'Exciter (0 creuse … 1 régulière)
     double tilt = 0.0;                                      // −1 … +1, mode Bande seulement
     double drive = 2.5;                                     // « Harmoniques » : niveau normalisé à l'entrée de la courbe (0,3 doux … 6 dur)
     // Tame
@@ -45,7 +46,7 @@ struct BandeSpec
     bool operator== (const BandeSpec& o) const
     {
         return on == o.on && type == o.type && forme == o.forme && f0 == o.f0 && q == o.q && gainDb == o.gainDb && canal == o.canal && profil == o.profil
-            && source == o.source && drive == o.drive && tilt == o.tilt && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs && link == o.link;
+            && source == o.source && drive == o.drive && tilt == o.tilt && dens == o.dens && width == o.width && cible == o.cible && timeMs == o.timeMs && sens == o.sens && amount == o.amount && releaseMs == o.releaseMs && link == o.link;
     }
     bool operator!= (const BandeSpec& o) const { return ! (*this == o); }
 };
@@ -64,7 +65,7 @@ public:
             retard[k].init (0.0);
             switch (s.type)
             {
-                case TypeBande::Exciter: exc[k] = std::make_unique<ExciterV2>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.profil, s.source, s.drive, s.tilt); break;
+                case TypeBande::Exciter: exc[k] = std::make_unique<ExciterV2>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.profil, s.source, s.drive, s.tilt, s.dens); break;
                 case TypeBande::Tame:    tame[k] = std::make_unique<Tame>();   tame[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.width); break;
                 case TypeBande::Shape:   shape[k] = std::make_unique<Shape>(); shape[k]->prepare (fs, s.cible, s.forme, s.f0, s.q, s.gainDb, s.timeMs, s.sens); break;
                 case TypeBande::Lift:    lift[k] = std::make_unique<Lift>();   lift[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.amount, s.releaseMs); break;
@@ -88,7 +89,13 @@ public:
         }
     }
 
-    void setLink (double l) { spec.link = l; }                                       // en direct
+    void setLink (double l) { spec.link = l; }
+    void setDens (double d)
+    {
+        spec.dens = d;
+        for (int i = 0; i < n; ++i)
+            if (exc[(size_t) i]) exc[(size_t) i]->setDensite (d);
+    }                                       // en direct
 
     void setTilt (double t)
     {

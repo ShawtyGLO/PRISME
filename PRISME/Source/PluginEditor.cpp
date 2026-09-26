@@ -6,6 +6,9 @@ using prismeParams::U8;
 
 static constexpr float kFMin = 20.0f, kFMax = 20000.0f, kGMax = 15.0f;
 
+static float scaleOf (PrismeProcessor& p) { return pp::raw (p.apvts, "scale"); }                              // Intensité globale (échelle du gain de toutes les bandes)
+static void aide (juce::Component& c, const juce::String& t) { c.getProperties().set ("aide", t); }
+
 static juce::File uiFile()
 {
     return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Shawty").getChildFile ("PRISME").getChildFile ("ui.xml");
@@ -188,7 +191,7 @@ void CurveDisplay::paint (juce::Graphics& g)
     {
         bands[i] = { pp::raw (proc.apvts, pp::pid (i, "on")) > 0.5f, juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "type"))),
                      juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "forme"))), pp::raw (proc.apvts, pp::pid (i, "freq")),
-                     pp::raw (proc.apvts, pp::pid (i, "q")), pp::raw (proc.apvts, pp::pid (i, "gain")) };
+                     pp::raw (proc.apvts, pp::pid (i, "q")), juce::jlimit (-kGMax, kGMax, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)) };
     }
 
     for (int i = 0; i < pp::nBands; ++i)
@@ -252,13 +255,26 @@ void CurveDisplay::paint (juce::Graphics& g)
     g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 10.0f, 1.0f);
 }
 
+juce::String CurveDisplay::helpAt (juce::Point<int> p) const
+{
+    const auto ord = pp::bandOrder (proc.apvts);
+    for (int i = 0; i < pp::nBands; ++i)
+    {
+        const float x = xOf (pp::raw (proc.apvts, pp::pid (i, "freq"))), y = yOf (juce::jlimit (-kGMax, kGMax, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)));
+        if (std::hypot (x - (float) p.x, y - (float) p.y) < 18.0f)
+            return U8 ("Bande ") + juce::String (ord.rankOf[i] + 1) + U8 (" (") + pp::typeNames()[juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "type")))]
+                 + U8 (") : glisser = fréquence et gain, molette = Q, double-clic = activer / couper.");
+    }
+    return U8 ("Courbe : glisser un nœud (fréquence, gain), molette = Q de la bande sélectionnée. La zone colorée derrière montre le signal ajouté (wet) de chaque bande.");
+}
+
 void CurveDisplay::mouseDown (const juce::MouseEvent& e)
 {
     int best = -1;
     float bd = 18.0f;
     for (int i = 0; i < pp::nBands; ++i)
     {
-        const float x = xOf (pp::raw (proc.apvts, pp::pid (i, "freq"))), y = yOf (pp::raw (proc.apvts, pp::pid (i, "gain")));
+        const float x = xOf (pp::raw (proc.apvts, pp::pid (i, "freq"))), y = yOf (juce::jlimit (-kGMax, kGMax, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)));
         const float d = std::hypot (x - (float) e.x, y - (float) e.y);
         if (d < bd) { bd = d; best = i; }
     }
@@ -278,7 +294,9 @@ void CurveDisplay::mouseDrag (const juce::MouseEvent& e)
     const bool exciter = juce::roundToInt (pp::raw (proc.apvts, pp::pid (dragBand, "type"))) == 0;      // Exciter : gain de 0 à +15 seulement
     const float g = std::round (juce::jlimit (exciter ? 0.0f : -kGMax, kGMax, gOf ((float) e.y)) * 10.0f) / 10.0f;
     setParam (pp::pid (dragBand, "freq"), f, false);
-    setParam (pp::pid (dragBand, "gain"), g, false);
+    const float sc = scaleOf (proc);                                                    // g est le gain EFFECTIF (affiché) : le réglage de la bande est g / Intensité
+    const float gBase = sc > 0.05f ? std::round (juce::jlimit (-kGMax, kGMax, g / sc) * 10.0f) / 10.0f : pp::raw (proc.apvts, pp::pid (dragBand, "gain"));
+    setParam (pp::pid (dragBand, "gain"), gBase, false);
     repaint();
 }
 
@@ -331,9 +349,16 @@ void BandTabs::paint (juce::Graphics& g)
         const int canal = juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "canal")));
         g.drawText (pp::canalNames()[canal], (int) r.getRight() - 56, (int) r.getY() + 8, 48, 18, juce::Justification::right);
         const int forme = juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "forme")));
-        g.drawText (pp::formeNames()[forme] + U8 (" · ") + fmtFreq (pp::raw (proc.apvts, pp::pid (i, "freq"))) + U8 (" · ") + fmtGain (pp::raw (proc.apvts, pp::pid (i, "gain"))),
+        g.drawText (pp::formeNames()[forme] + U8 (" · ") + fmtFreq (pp::raw (proc.apvts, pp::pid (i, "freq"))) + U8 (" · ") + fmtGain (pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)),
                     (int) r.getX() + 12, (int) r.getY() + 30, (int) r.getWidth() - 16, 18, juce::Justification::left);
     }
+}
+
+juce::String BandTabs::helpAt (juce::Point<int> p) const
+{
+    for (int rank = 0; rank < pp::nBands; ++rank)
+        if (cell (rank).contains (p)) return U8 ("Bande ") + juce::String (rank + 1) + U8 (" : clic = sélectionner, double-clic = activer / couper. Les bandes sont numérotées selon leur fréquence.");
+    return {};
 }
 
 void BandTabs::mouseDoubleClick (const juce::MouseEvent& e)
@@ -401,6 +426,7 @@ void BandCard::rebuild (int b)
         addAndMakeVisible (*typeSegs.back());
     };
     if (type == 0)      { addSeg ("mode", "PROFIL", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); addKnob ("drive", "Harmoniques", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
+                          addKnob ("dens", U8 ("Densité"), [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
                           if (juce::roundToInt (pp::raw (proc.apvts, pp::pid (b, "source"))) == 1) addKnob ("tilt", "Tilt", [] (double v) { return (v > 0 ? juce::String ("+") : juce::String()) + juce::String (v, 2); }); }
     else if (type == 1) { addKnob ("width", "Largeur", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; }); }
     else if (type == 2)
@@ -414,25 +440,55 @@ void BandCard::rebuild (int b)
         addKnob ("amount", "Amount", [] (double v) { return juce::String (juce::roundToInt (v)) + " %  (" + juce::String (juce::roundToInt (-60.0 + 0.48 * v)) + " dBFS)"; });
         addKnob ("release", U8 ("Relâchement"), [] (double v) { return juce::String (juce::roundToInt (v)) + " ms"; });
     }
-    juce::String notes[4] = {
-        U8 ("Ajoute des harmoniques dans la zone, en parallèle et seulement sur les pics au-dessus du niveau courant (gain de 0 à +15 dB : dose du wet). Profil : Doux, Chaud, Mordant, Mordant chaud. Harmoniques : de doux à dur. En mode Bande, Tilt penche la source : plus de saturation dans les graves (−) ou les aigus (+)."),
-        U8 ("Atténue les résonances qui ressortent dans la zone (gain −) ou accentue les pics déjà forts (gain +). Largeur : de fin à large."),
-        U8 ("Agit sur les transitoires ou sur le sustain de la bande, dans les deux sens. Durée : combien de temps dure l'effet après une attaque."),
-        U8 ("Relève ce qui est faible dans la zone (gain +) ou l'abaisse (gain −). Amount : plus il monte, plus de matière est concernée. Protection du souffle automatique.") };
-    note = notes[type];
+    // ---- aides du bandeau ----
+    aide (*onButton, U8 ("Delta de la bande : n'écoute que le signal ajouté (wet) par cette bande."));
+    forme->setOptionHelp ({ U8 ("Shelf grave : la bande agit en dessous de la fréquence (le Q est fixe)."), U8 ("Cloche : la bande agit autour de la fréquence, avec la largeur donnée par Q."), U8 ("Shelf aigu : la bande agit au-dessus de la fréquence (le Q est fixe).") });
+    canal->setOptionHelp ({ U8 ("Stéréo : la bande traite les deux canaux (Exciter : source prise sur le milieu, même wet à gauche et à droite)."), U8 ("Mid : ne traite que le milieu (L+R)/2."), U8 ("Side : ne traite que les côtés (L−R)/2."),
+                            U8 ("L : ne traite que le canal gauche."), U8 ("R : ne traite que le canal droit.") });
+    aide (*posKnobs[0], U8 ("Fréquence de la bande (pour un shelf : fréquence de coupure). Maj = réglage fin, double-clic = valeur par défaut."));
+    aide (*posKnobs[1], U8 ("Q : largeur de la cloche (plus élevé = plus étroit). Sans effet sur les shelfs."));
+    const juce::String aideGain[4] = { U8 ("Gain de l'Exciter (0 à +15 dB) : dose du signal ajouté (wet). Toutes les bandes sont multipliées par Intensité (en haut)."),
+                                       U8 ("Gain du Tame : négatif = atténue les résonances jusqu'à cette profondeur, positif = accentue les pics déjà forts."),
+                                       U8 ("Gain du Shape : appliqué aux transitoires ou au sustain (selon Cible), dans les deux sens."),
+                                       U8 ("Gain du Lift : positif = relève ce qui est faible, négatif = l'abaisse (expandeur).") };
+    aide (*posKnobs[2], aideGain[type]);
+    if (type == 0)
+    {
+        typeSegs[0]->setOptionHelp ({ U8 ("Doux : distorsion douce (tanh), harmoniques impaires discrètes : brillance sans agressivité."), U8 ("Chaud : distorsion asymétrique, harmoniques paires : chaleur et épaisseur."),
+                                      U8 ("Mordant : écrêtage plus dur, harmoniques impaires : mordant et présence."), U8 ("Mordant chaud : écrêtage dur asymétrique : mordant et chaleur (profil de référence).") });
+        typeSegs[1]->setOptionHelp ({ U8 ("Auto : la saturation est alimentée par une bande centrée à f0/3 : ses harmoniques tombent dans la zone réglée."), U8 ("Bande : la saturation est alimentée par la zone elle-même (permet le Tilt).") });
+        aide (*typeKnobs[0], U8 ("Harmoniques : dureté de la saturation, de douce à dure (plus dur = plus d'harmoniques élevées)."));
+        aide (*typeKnobs[1], U8 ("Densité : 0 % = le wet ne réagit qu'aux pics (salves nettes, peut pomper) ; 100 % = wet continu et régulier (halo)."));
+        if (typeKnobs.size() > 2) aide (*typeKnobs[2], U8 ("Tilt : penche la source avant la saturation : négatif = plus de saturation dans les graves de la zone, positif = dans les aigus."));
+    }
+    else if (type == 1)
+        aide (*typeKnobs[0], U8 ("Largeur de traitement : de fin (résonances étroites) à large (bosses larges)."));
+    else if (type == 2)
+    {
+        typeSegs[0]->setOptionHelp ({ U8 ("Transitoires : le gain s'applique aux attaques de la zone."), U8 ("Sustain : le gain s'applique au corps du son, entre les attaques.") });
+        aide (*typeKnobs[0], U8 ("Durée : combien de temps l'effet dure après une attaque (5 à 200 ms)."));
+        aide (*typeKnobs[1], U8 ("Sensibilité : à 100 % toutes les attaques déclenchent, à 0 % seulement les plus vives."));
+    }
+    else
+    {
+        aide (*typeKnobs[0], U8 ("Amount : seuil absolu du relevé (−60 à −12 dBFS). Plus il monte, plus de matière est relevée."));
+        aide (*typeKnobs[1], U8 ("Relâchement : vitesse à laquelle le gain revient (20 à 1000 ms)."));
+    }
     linkSlider.reset(); linkAttach.reset();
     if (type != 0 && juce::roundToInt (pp::raw (ap, pp::pid (b, "canal"))) == 0)         // liaison des détecteurs L/R : Tame, Shape, Lift en canal Stéréo
     {
         linkSlider = std::make_unique<juce::Slider> (juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
         linkSlider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 22);
         linkSlider->setNumDecimalPlacesToDisplay (0);
-        linkSlider->textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; };
         linkSlider->setColour (juce::Slider::trackColourId, colour);
         linkSlider->setColour (juce::Slider::thumbColourId, col::txt);
         linkSlider->setColour (juce::Slider::textBoxTextColourId, col::txt);
         linkSlider->setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
         linkAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (ap, pp::pid (b, "link"), *linkSlider);
+        linkSlider->textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; };
+        linkSlider->updateText();
         addAndMakeVisible (*linkSlider);
+        aide (*linkSlider, U8 ("Liaison L/R des détecteurs : 0 % = indépendants (précis par canal, l'image peut bouger), 100 % = mêmes décisions (image stable). 50 % = compromis."));
     }
     resized();
     repaint();
@@ -474,7 +530,7 @@ void BandCard::resized()
         }
         // Saturation (et Tilt en mode Bande) à droite de la rangée SOURCE : sous le sélecteur de mode, qui est large
         int kx2 = x3 + (typeSegs.size() > 1 ? juce::jmin (w3, typeSegs[1]->preferredWidth()) : 0) + 28;
-        for (auto& k : typeKnobs) { k->setBounds (kx2, yTop + 76, Knob::preferredWidth(), Knob::preferredHeight()); kx2 += Knob::preferredWidth() + 8; }
+        for (auto& k : typeKnobs) { k->setBounds (kx2, yTop + 76, Knob::preferredWidth(), Knob::preferredHeight()); kx2 += Knob::preferredWidth() + 2; }
     }
     else
     {
@@ -491,10 +547,7 @@ void BandCard::resized()
     {
         labels.push_back ({ U8 ("LIAISON L/R"), { x3, yBot, 200, 16 } });
         linkSlider->setBounds (x3, yBot + 22, 215, 26);
-        noteRect = { x3 + 232, yBot, w3 - 232, bottomH };
     }
-    else
-        noteRect = { x3, yBot, w3, bottomH };
 }
 
 void BandCard::paint (juce::Graphics& g)
@@ -511,8 +564,6 @@ void BandCard::paint (juce::Graphics& g)
         for (auto c : l.text) { spaced << juce::String::charToString (c) << juce::String::charToString (0x200A); }
         g.drawText (spaced, l.r, juce::Justification::centredLeft);
     }
-    g.setFont (12.0f);
-    g.drawFittedText (note, noteRect, juce::Justification::topLeft, 5);
 }
 
 // ------------------------------------------------------------------ éditeur
@@ -523,8 +574,9 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
       card (p)
 {
     addAndMakeVisible (content);
-    for (auto* c : std::initializer_list<juce::Component*> { &display, &tabs, &card, &deltaBtn, &specBtn, &outSlider })
+    for (auto* c : std::initializer_list<juce::Component*> { &display, &tabs, &card, &deltaBtn, &specBtn, &outSlider, &scaleSlider, &helpBar })
         content.addAndMakeVisible (c);
+    content.addMouseListener (&helpBar, true);
     deltaAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "delta", deltaBtn);
     specBtn.setToggleState (true, juce::dontSendNotification);
     specBtn.onClick = [this] { display.setShowSpectrum (specBtn.getToggleState()); };
@@ -537,6 +589,19 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
     outSlider.setColour (juce::Slider::textBoxTextColourId, col::txt);
     outSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     outAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, "output", outSlider);
+    scaleSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    scaleSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+    scaleSlider.setColour (juce::Slider::trackColourId, col::mut);
+    scaleSlider.setColour (juce::Slider::thumbColourId, col::txt);
+    scaleSlider.setColour (juce::Slider::textBoxTextColourId, col::txt);
+    scaleSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    scaleAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, "scale", scaleSlider);
+    scaleSlider.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; };      // après l'attachement, qui installe la sienne
+    scaleSlider.updateText();
+    aide (scaleSlider, U8 ("Intensité : multiplie proportionnellement le gain de TOUTES les bandes. 100 % = vos réglages ; moins = traitement réduit ; plus (jusqu'à 200 %) = poussé à l'extrême."));
+    aide (outSlider, U8 ("Niveau de sortie du plugin (−12 à +12 dB)."));
+    aide (deltaBtn, U8 ("Écouter le delta : n'écoute que ce que les bandes ajoutent ou retirent (toutes les bandes)."));
+    aide (specBtn, U8 ("Affiche ou masque le spectre de fond dans la courbe."));
 
     // Le titre « P R I S M E » est un bouton de bypass cache (clic = bypass / retour) ; il s'assombrit quand le bypass est actif.
     content.onPaint = [this] (juce::Graphics& g)
@@ -545,6 +610,10 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
         g.setColour (byp ? juce::Colour (0xff5a606b) : col::txt);
         g.setFont (juce::Font (juce::FontOptions (22.0f, juce::Font::bold)));
         g.drawText ("P R I S M E", 16, 14, 240, 30, juce::Justification::left);
+        g.setColour (col::mut);
+        g.setFont (12.0f);
+        g.drawText (U8 ("Intensité"), scaleSlider.getX() - 66, scaleSlider.getY() + 2, 64, 22, juce::Justification::centredRight);
+        g.drawText ("Sortie", outSlider.getX() - 46, outSlider.getY() + 2, 44, 22, juce::Justification::centredRight);
     };
     content.onMouseDown = [this] (const juce::MouseEvent& e)
     {
@@ -601,11 +670,15 @@ void PrismeEditor::layoutContent()
     auto a = juce::Rectangle<int> (0, 0, baseW, baseH).reduced (16);
     auto header = a.removeFromTop (44);
     outSlider.setBounds (header.removeFromRight (190).withTrimmedTop (10).withHeight (26));
-    header.removeFromRight (8);
+    header.removeFromRight (56);
+    scaleSlider.setBounds (header.removeFromRight (190).withTrimmedTop (10).withHeight (26));
+    header.removeFromRight (80);
     specBtn.setBounds (header.removeFromRight (90).withTrimmedTop (8).withHeight (28));
     header.removeFromRight (8);
     deltaBtn.setBounds (header.removeFromRight (150).withTrimmedTop (8).withHeight (28));
     a.removeFromTop (6);
+    helpBar.setBounds (a.removeFromBottom (30));
+    a.removeFromBottom (8);
     const int cardH = 262, tabsH = 64;
     card.setBounds (a.removeFromBottom (cardH));
     a.removeFromBottom (10);

@@ -6,7 +6,7 @@
 using prismeParams::U8;
 
 // Courbe de correction + spectre + nœuds des 5 bandes (maquette v1) : glisser un nœud = fréquence et gain, molette = Q, double-clic = bande active / coupée.
-class CurveDisplay : public juce::Component, private juce::Timer
+class CurveDisplay : public juce::Component, public prismeUi::HelpProvider, private juce::Timer
 {
 public:
     CurveDisplay (PrismeProcessor& p, std::function<int()> getSel, std::function<void (int)> setSel);
@@ -19,6 +19,7 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void setShowSpectrum (bool b) { showSpec = b; repaint(); }
+    juce::String helpAt (juce::Point<int> p) const override;
 
 private:
     void timerCallback() override;
@@ -48,13 +49,14 @@ private:
 };
 
 // Les 5 onglets de bande (couleur du type, canal, forme · fréquence · gain).
-class BandTabs : public juce::Component
+class BandTabs : public juce::Component, public prismeUi::HelpProvider
 {
 public:
     BandTabs (PrismeProcessor& p, std::function<int()> getSel, std::function<void (int)> setSel) : proc (p), selGet (std::move (getSel)), selSet (std::move (setSel)) {}
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
+    juce::String helpAt (juce::Point<int> p) const override;
 
 private:
     juce::Rectangle<int> cell (int i) const { const int gap = 8, w = (getWidth() - gap * 4) / 5; return { i * (w + gap), 0, w, getHeight() }; }
@@ -85,17 +87,61 @@ private:
     std::vector<std::unique_ptr<prismeUi::Knob>> typeKnobs;
     std::vector<std::unique_ptr<prismeUi::Seg>> typeSegs;
     std::vector<juce::String> typeSegTitles;
-    juce::String note;
     std::unique_ptr<juce::Slider> linkSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> linkAttach;
     std::vector<Label> labels;
-    juce::Rectangle<int> noteRect;
+};
+
+// Bandeau d'aide (bas de la fenêtre) : décrit ce que la souris survole. Écoute les événements souris de tous les composants du contenu.
+class HelpBar : public juce::Component, public juce::MouseListener
+{
+public:
+    void paint (juce::Graphics& g) override
+    {
+        const auto r = getLocalBounds().toFloat();
+        g.setColour (prismeUi::col::panel);
+        g.fillRoundedRectangle (r, 8.0f);
+        g.setColour (prismeUi::col::line);
+        g.drawRoundedRectangle (r.reduced (0.5f), 8.0f, 1.0f);
+        g.setColour (text.isEmpty() ? prismeUi::col::mut.withAlpha (0.6f) : prismeUi::col::txt);
+        g.setFont (13.0f);
+        g.drawFittedText (text.isEmpty() ? U8 ("Survolez un réglage pour afficher son rôle.") : text, getLocalBounds().reduced (12, 2), juce::Justification::centredLeft, 2);
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override { update (e); }
+    void mouseEnter (const juce::MouseEvent& e) override { update (e); }
+    void mouseDown (const juce::MouseEvent& e) override { update (e); }
+    void mouseExit (const juce::MouseEvent&) override { setText ({}); }
+
+private:
+    void update (const juce::MouseEvent& e)
+    {
+        juce::String t;
+        for (auto* p = e.eventComponent; p != nullptr && p != getParentComponent(); p = p->getParentComponent())
+        {
+            if (auto* hp = dynamic_cast<prismeUi::HelpProvider*> (p))
+            {
+                t = hp->helpAt (e.getEventRelativeTo (p).getPosition());
+                if (t.isNotEmpty()) break;
+            }
+            if (p->getProperties().contains ("aide"))
+            {
+                t = p->getProperties()["aide"].toString();
+                if (t.isNotEmpty()) break;
+            }
+        }
+        setText (t);
+    }
+
+    void setText (const juce::String& t) { if (t != text) { text = t; repaint(); } }
+    juce::String text;
 };
 
 // Contenu de l'editeur, dessine a une taille de base fixe puis mis a l'echelle (le redimensionnement garde les proportions de tous les elements).
-class EditorContent : public juce::Component
+class EditorContent : public juce::Component, public prismeUi::HelpProvider
 {
 public:
+    juce::String helpAt (juce::Point<int> p) const override { return juce::Rectangle<int> (10, 8, 190, 42).contains (p) ? prismeParams::U8 ("PRISME : un clic sur le titre active / désactive le bypass (le titre s'assombrit).") : juce::String(); }
     std::function<void (juce::Graphics&)> onPaint;
     std::function<void (const juce::MouseEvent&)> onMouseDown;
     void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
@@ -111,7 +157,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int baseW = 1120, baseH = 780;                    // taille de CONCEPTION (mise a l'echelle ensuite)
+    static constexpr int baseW = 1120, baseH = 816;                    // taille de CONCEPTION (mise a l'echelle ensuite)
     static constexpr int defaultW = 1040;                              // taille a l'ouverture (retour de llg53) ; la derniere taille utilisee est memorisee
 
 private:
@@ -127,6 +173,9 @@ private:
     CurveDisplay display;
     BandTabs tabs;
     BandCard card;
+    HelpBar helpBar;
+    juce::Slider scaleSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> scaleAttach;
     prismeUi::PillButton deltaBtn { U8 ("Écouter le delta"), U8 ("Écouter le delta") }, specBtn { "Spectre", "Spectre" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttach;
     juce::Slider outSlider;

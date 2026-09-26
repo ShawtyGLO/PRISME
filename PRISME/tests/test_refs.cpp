@@ -100,9 +100,9 @@ int main (int argc, char** argv)
         }
         else if (type == "exciter2")
         {
-            double g, dr, tl;
+            double g, dr, tl, dn = 1.0;
             std::string pr, so;
-            is >> g >> pr >> so >> dr >> tl;
+            is >> g >> pr >> so >> dr >> tl >> dn;
             const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
             ++total;
             if (xs.empty() || xs.size() != ref.size()) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
@@ -110,7 +110,7 @@ int main (int argc, char** argv)
             for (double v : ref) crete = std::max (crete, std::abs (v));
             const ProfilExc p = pr == "doux" ? ProfilExc::Doux : pr == "chaud" ? ProfilExc::Chaud : pr == "mordant" ? ProfilExc::Mordant : ProfilExc::MordantChaud;
             ExciterV2 ex;
-            ex.prepare (fs, forme (sh), f0, q, g, p, so == "auto" ? SourceExc::Auto : SourceExc::Bande, dr, tl);
+            ex.prepare (fs, forme (sh), f0, q, g, p, so == "auto" ? SourceExc::Auto : SourceExc::Bande, dr, tl, dn);
             for (size_t i = 0; i < xs.size(); ++i) e = std::max (e, std::abs (ex.process (xs[i]) - ref[i]));
             e /= std::max (crete, 1e-30);
             pireExc2 = std::max (pireExc2, e);

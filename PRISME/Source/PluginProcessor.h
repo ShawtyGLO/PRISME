@@ -77,6 +77,8 @@ private:
         double lastTilt = 0.0;
         std::atomic<double> linkTarget { 0.5 };
         double lastLink = 0.5;
+        std::atomic<double> densTarget { 1.0 };
+        double lastDens = 1.0;
         std::atomic<bool> needRebuild { false };
         // thread message
         prisme::BandeSpec msgStruct;

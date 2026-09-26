@@ -20,7 +20,7 @@ public:
     static constexpr int latence = 20;
 
     // gainDb : gain de bande (≥ 0) → niveau du wet = 10^((g − 3)/20) × niveau lent de la source.
-    void prepare (double fs, Forme forme_, double f0_, double q, double gainDb, ProfilExc profil_, SourceExc source_, double drive_ = 2.5, double tilt = 0.0)
+    void prepare (double fs, Forme forme_, double f0_, double q, double gainDb, ProfilExc profil_, SourceExc source_, double drive_ = 2.5, double tilt = 0.0, double dens = 1.0)
     {
         profil = profil_;
         source = source_;
@@ -41,7 +41,7 @@ public:
         for (auto& o : out) o.set (zc);
         cS = std::exp (-1.0 / (0.4 * fs));
         cE = std::exp (-1.0 / (0.003 * fs));
-        cPorte = std::exp (-1.0 / (0.1 * fs));
+        setDensite (dens);
         rDc = 1.0 - 2.0 * kPi * 20.0 / fs;
         reset();
         setTilt (tilt);
@@ -49,6 +49,15 @@ public:
 
     void setGain (double gainDb) { niveau = std::pow (10.0, (gainDb - 3.0) / 20.0); }      // en direct
     void setDrive (double d) { drive = d; }                                                   // en direct
+
+    // Densité 0 … 1 (en direct) : porte creuse (pics seulement, peut pomper) → porte régulière (wet continu) ; 1 = réglage validé (−3 dB / 12 dB / 0,3 / 100 ms)
+    void setDensite (double d)
+    {
+        seuilDb = 3.0 - 6.0 * d;
+        largeurDb = 6.0 + 6.0 * d;
+        plancher = 0.3 * d;
+        cPorte = std::exp (-1.0 / (std::max (0.1 * d, 1e-6) * fsHz));
+    }
 
     // Tilt −1 … +1 (mode Bande seulement) ; en direct, l'état des filtres est conservé.
     void setTilt (double t)
@@ -106,7 +115,8 @@ public:
     }
 
 private:
-    static constexpr double seuilDb = -3.0, largeurDb = 12.0, plancher = 0.3, tiltDb = 9.0;      // porte régulière (voir prisme_exciter_v2_stream.py)
+    static constexpr double tiltDb = 9.0;
+    double seuilDb = -3.0, largeurDb = 12.0, plancher = 0.3;                                      // porte (voir prisme_exciter_v2_stream.py et setDensite)
 
     inline double pente() const { return profil == ProfilExc::Chaud ? 1.0 - std::tanh (0.35) * std::tanh (0.35) : 1.0; }
 

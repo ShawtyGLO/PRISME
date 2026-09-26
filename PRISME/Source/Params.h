@@ -37,6 +37,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "on"), 1 }, n + "active", true));
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "solo"), 1 }, n + U8 ("delta (écoute seule)"), false));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "tilt"), 1 }, n + "tilt (mode Bande)", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+        layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "dens"), 1 }, n + U8 ("densité (Exciter)"), juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "link"), 1 }, n + "liaison L/R (Tame, Shape, Lift)", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "drive"), 1 }, n + "saturation", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.71f));      // 0,71 → drive 2,5
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "type"), 1 }, n + "type", typeNames(), defType[b]));
@@ -65,6 +66,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     }
     layout.add (std::make_unique<juce::AudioParameterBool>  (P { "delta", 1 }, "Delta", false));
     layout.add (std::make_unique<juce::AudioParameterBool>  (P { "bypass", 1 }, "Bypass", false));
+    layout.add (std::make_unique<juce::AudioParameterFloat> (P { "scale", 1 }, U8 ("Intensité (échelle du gain de toutes les bandes)"), juce::NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f));
     layout.add (std::make_unique<juce::AudioParameterFloat> (P { "output", 1 }, "Sortie", juce::NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f));
     return layout;
 }
@@ -97,12 +99,13 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     sp.forme   = fo == 0 ? prisme::Forme::ShelfGrave : fo == 1 ? prisme::Forme::Cloche : prisme::Forme::ShelfAigu;
     sp.f0      = raw (s, pid (b, "freq"));
     sp.q       = raw (s, pid (b, "q"));
-    sp.gainDb  = raw (s, pid (b, "gain"));
+    sp.gainDb  = juce::jlimit (-30.0f, 30.0f, raw (s, pid (b, "gain")) * raw (s, "scale"));      // Intensité globale : échelle proportionnelle du gain de toutes les bandes
     sp.canal   = (prisme::Canal) juce::roundToInt (raw (s, pid (b, "canal")));
     sp.profil  = (prisme::ProfilExc) juce::jlimit (0, 3, juce::roundToInt (raw (s, pid (b, "mode"))));      // Doux, Chaud, Mordant, Mordant chaud
     sp.source  = (prisme::SourceExc) juce::roundToInt (raw (s, pid (b, "source")));
     sp.tilt    = raw (s, pid (b, "tilt"));
     sp.link    = raw (s, pid (b, "link"));
+    sp.dens    = raw (s, pid (b, "dens"));
     sp.drive   = driveFromKnob (raw (s, pid (b, "drive")));
     sp.width   = raw (s, pid (b, "width"));
     sp.cible   = (prisme::Shape::Cible) juce::roundToInt (raw (s, pid (b, "cible")));

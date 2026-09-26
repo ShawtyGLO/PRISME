@@ -53,7 +53,7 @@ def _un_pole(c, x, zi):
 class ExciterV2Stream:
     latence = D_OS
 
-    def __init__(self, fs, shape="bell", f0=3000.0, q=0.71, gain_db=6.0, profil="mordant_chaud", source="auto", drive=2.5, tilt=0.0, seuil_db=SEUIL_DB, src_q=2.0, out_sections=3):
+    def __init__(self, fs, shape="bell", f0=3000.0, q=0.71, gain_db=6.0, profil="mordant_chaud", source="auto", drive=2.5, tilt=0.0, seuil_db=SEUIL_DB, src_q=2.0, out_sections=3, largeur_db=LARGEUR_DB, plancher=PLANCHER, tau_porte=TAU_PORTE, dens=None):
         self.fs, self.profil, self.source, self.drive, self.seuil = fs, profil, source, drive, seuil_db
         self.niveau = 10.0 ** ((gain_db - 3.0) / 20.0)
         self.f, self.F, self.pente = courbe(profil)[0], courbe(profil)[1], courbe(profil)[2]
@@ -70,7 +70,10 @@ class ExciterV2Stream:
             self.z_tilt = [np.zeros(2), np.zeros(2)]
         self.cS, self.cE = np.exp(-1.0 / (TAU_LENT * fs)), np.exp(-1.0 / (TAU_RAPIDE * fs))
         self.z_S, self.z_E = np.zeros(1), np.zeros(1)
-        self.c_porte, self.y_porte = np.exp(-1.0 / (TAU_PORTE * fs)), 0.0
+        if dens is not None:                                   # « Densité » 0 … 1 : de la porte creuse (pics seulement, peut pomper) à la porte régulière (wet continu)
+            self.seuil, largeur_db, plancher, tau_porte = 3.0 - 6.0 * dens, 6.0 + 6.0 * dens, 0.3 * dens, 0.1 * dens
+        self.c_porte, self.y_porte = np.exp(-1.0 / (max(tau_porte, 1e-6) * fs)), 0.0
+        self.largeur, self.plancher = largeur_db, plancher
         self.z_up, self.z_dn = np.zeros(40), np.zeros(40)
         self.x1 = 0.0
         self.d_u, self.d_S, self.d_p = Delai(D_OS), Delai(D_OS, 1e-7), Delai(D_OS)
@@ -94,8 +97,8 @@ class ExciterV2Stream:
         e, self.z_E = _un_pole(self.cE, a, self.z_E)
         e = e * (np.pi / 2)
         rel = 20.0 * np.log10((e + 1e-12) / S)
-        v = np.clip((rel - self.seuil) / LARGEUR_DB, 0.0, 1.0)
-        porte = PLANCHER + (1.0 - PLANCHER) * (v * v * (3.0 - 2.0 * v))
+        v = np.clip((rel - self.seuil) / self.largeur, 0.0, 1.0)
+        porte = self.plancher + (1.0 - self.plancher) * (v * v * (3.0 - 2.0 * v))
         porte, self.y_porte = _tient_relache(porte, self.c_porte, self.y_porte)          # attaque immédiate, relâchement 100 ms
         u = self.drive * s / S
         zs = np.zeros(2 * n)

@@ -27,6 +27,13 @@ inline int textWidth (const juce::Font& f, const juce::String& t) { return juce:
 inline juce::String fmtFreq (double f) { return f >= 1000.0 ? juce::String (f / 1000.0, 2) + " k" : juce::String (juce::roundToInt (f)) + " Hz"; }
 inline juce::String fmtGain (double g) { return (g > 0.0 ? "+" : "") + juce::String (g, 1) + " dB"; }
 
+// Un composant qui décrit lui-même ce que la souris survole (bandeau d'aide du bas) : sinon la propriété « aide » du composant ou d'un de ses parents est utilisée.
+struct HelpProvider
+{
+    virtual ~HelpProvider() = default;
+    virtual juce::String helpAt (juce::Point<int>) const { return {}; }
+};
+
 // Dessin des boutons rotatifs (arc de piste + arc de valeur + aiguille), comme la maquette.
 class KnobLnF : public juce::LookAndFeel_V4
 {
@@ -117,7 +124,7 @@ private:
 };
 
 // Sélecteur segmenté pour un paramètre à choix (Cloche | Shelf grave | Shelf aigu, canaux, modes…).
-class Seg : public juce::Component
+class Seg : public juce::Component, public HelpProvider
 {
 public:
     Seg (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramId, const juce::StringArray& names_, juce::Colour c, std::function<void()> onChange_ = {})
@@ -133,6 +140,23 @@ public:
             if (changed && onChange) juce::MessageManager::callAsync ([fn = onChange] { fn(); });
         });
         attachment->sendInitialUpdate();
+    }
+
+    void setOptionHelp (juce::StringArray h) { optHelp = std::move (h); }
+
+    juce::String helpAt (juce::Point<int> p) const override
+    {
+        juce::Font f { juce::FontOptions (13.0f) };
+        int total = 0;
+        for (auto& n : names) total += prismeUi::textWidth (f, n) + 24;
+        const float scale = (float) getWidth() / (float) juce::jmax (1, total);
+        float x = 0.0f;
+        for (int i = 0; i < names.size(); ++i)
+        {
+            x += (float) (prismeUi::textWidth (f, names[i]) + 24) * scale;
+            if ((float) p.x < x) return i < optHelp.size() ? optHelp[i] : juce::String();
+        }
+        return {};
     }
 
     int preferredWidth (float fontH = 13.0f) const
@@ -200,12 +224,13 @@ private:
     juce::Colour colour;
     juce::RangedAudioParameter* param;
     std::function<void()> onChange;
+    juce::StringArray optHelp;
     int index = 0;
     std::unique_ptr<juce::ParameterAttachment> attachment;
 };
 
 // Les 4 types de traitement (grille 2 × 2), liés au paramètre `type` de la bande.
-class TypeButtons : public juce::Component
+class TypeButtons : public juce::Component, public HelpProvider
 {
 public:
     TypeButtons (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramId, std::function<void()> onChange_)
@@ -243,6 +268,17 @@ public:
             g.setFont (11.0f);
             g.drawFittedText (desc[i], (int) r.getX() + 10, (int) r.getY() + 28, (int) r.getWidth() - 14, 28, juce::Justification::topLeft, 2);
         }
+    }
+
+    juce::String helpAt (juce::Point<int> p) const override
+    {
+        juce::String aide[4] = { U8 ("Exciter : ajoute des harmoniques dans la zone, en parallèle (le signal d'origine n'est pas modifié)."),
+                                U8 ("Tame : atténue les résonances qui ressortent dans la zone (gain −) ou accentue les pics déjà forts (gain +)."),
+                                "Shape : agit sur les transitoires ou sur le sustain de la zone, dans les deux sens.",
+                                U8 ("Lift : relève ce qui est faible dans la zone (gain +) ou l'abaisse (gain −), selon le niveau.") };
+        for (int i = 0; i < 4; ++i)
+            if (cell (i).contains (p)) return aide[i];
+        return {};
     }
 
     void mouseDown (const juce::MouseEvent& e) override
