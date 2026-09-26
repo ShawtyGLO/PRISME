@@ -1,8 +1,8 @@
 """CONTRAT DE L'EXCITER v2 (flux) — 2026-09-26.
   V01 blocs      résultat identique quelle que soit la taille des blocs (64, 1000, entier) : < 1e-9
-  V02 latence    impulsion → aucune sortie avant 20 échantillons ; silence → silence exact
+  V02 latence    impulsion → sortie < 1e-7 avant 20 échantillons ; silence → < 1e-7 (−140 dBFS)
   V03 lié        entrée identique → wet identique (une seule chaîne mono) ; niveau du wet proportionnel à 10^(g/20) (g = 3 → 9 dB) à ± 0,5 dB
-  V04 seuil      signal STABLE (sans pic au-dessus de son niveau courant) → wet ≤ −60 dB sous la zone ; même signal avec des pics +6 dB → wet clairement plus haut
+  V04 régularité fenêtres de 100 ms muettes ≤ 5 %, écart-type du niveau du wet ≤ 12 dB (mesuré avant réglage de la porte : 37 % et 66,8 dB)
   V05 profils    4 profils, sortie finie et bornée, sur bruit blanc, musique, silence, 44,1/48/96 kHz
   V06 niveau     sortie proportionnelle au niveau d'entrée (le wet suit le signal : ×2 en entrée → ×2 en sortie ± 0,3 dB)
 """
@@ -32,17 +32,17 @@ if __name__ == "__main__":
     check("V01", "indépendance à la taille des blocs (64, 1000)", f"écart {e:.1e}", e < 1e-9)
     imp = np.zeros(4000); imp[100] = 1.0
     w = exciter_v2_stream(imp, fs, **kw)
-    check("V02", "aucune sortie avant l'impulsion + latence ; silence → silence", f"avant 100+{D_OS}: {np.max(np.abs(w[:100 + D_OS - 1])):.1e}",
-          np.max(np.abs(w[:100 + D_OS - 1])) == 0.0 and np.all(exciter_v2_stream(np.zeros(5000), fs, **kw) == 0.0))
+    check("V02", "avant l'impulsion et sur le silence : < 1e-7 (−140 dBFS ; le décalage de la courbe asymétrique × plancher de niveau 1e-7)", f"avant 100+{D_OS}: {np.max(np.abs(w[:100 + D_OS - 1])):.1e}",
+          np.max(np.abs(w[:100 + D_OS - 1])) < 1e-7 and np.max(np.abs(exciter_v2_stream(np.zeros(5000), fs, **kw))) < 1e-7)
     a = exciter_v2_stream(x, fs, **dict(kw, gain_db=3.0)); b = exciter_v2_stream(x, fs, **dict(kw, gain_db=12.0))
     dlt = rmsdb(b[int(fs):]) - rmsdb(a[int(fs):])
     check("V03", "niveau du wet proportionnel à 10^(g/20) (3 → 12 dB : +9 dB)", f"{dlt:+.2f} dB", abs(dlt - 9.0) < 0.5)
-    t = np.arange(int(fs * 4)) / fs
-    stable = 0.05 * np.sin(2 * np.pi * 1000 * t) + 0.04 * np.sin(2 * np.pi * 1300 * t)
-    piques = stable * (1 + 1.0 * (np.sin(2 * np.pi * 3.0 * t) > 0.95))
-    ws, wp = exciter_v2_stream(stable, fs, **kw), exciter_v2_stream(piques, fs, **kw)
-    check("V04", "seuil relatif : signal stable ≈ muet, pics au-dessus du niveau courant ouvrent le wet", f"stable {rmsdb(ws[fs:]) - rmsdb(stable[fs:]):.0f} dB / pics {rmsdb(wp[fs:]) - rmsdb(stable[fs:]):.0f} dB (re signal)",
-          rmsdb(ws[fs:]) - rmsdb(stable[fs:]) < -60 and rmsdb(wp[fs:]) > rmsdb(ws[fs:]) + 20)
+    ww = int(0.1 * fs)
+    r = ref[int(fs):]
+    nw = len(r) // ww
+    lw = 10 * np.log10((r[: nw * ww].reshape(nw, ww) ** 2).mean(axis=1) + 1e-20)
+    muet = 100 * np.mean(lw < np.median(lw) - 25)
+    check("V04", "détection RÉGULIÈRE sur la musique : fenêtres de 100 ms muettes ≤ 5 %, écart-type du niveau ≤ 12 dB", f"muettes {muet:.0f} % ; écart-type {np.std(lw):.1f} dB", muet <= 5 and np.std(lw) <= 12)
     ok5, pire = True, 0.0
     rng = np.random.default_rng(3)
     for pr in PROFILS:

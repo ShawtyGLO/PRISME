@@ -1,6 +1,7 @@
 // PRISME — Exciter v2 (port de _proto/prisme_exciter_v2_stream.py) : à seuil relatif, entrée MONO (non-linéarité liée), wet sans normalisation.
 //   source (Auto : bande f0/h sur 2 sections ; Bande : la zone, avec Tilt) → niveau lent S (τ 400 ms) et rapide e (τ 3 ms) → porte de seuil RELATIF
 //   → u = drive·s/S → ×2 (FIR 41) → courbe ADAA ordre 1 → ×1 → résidu = y − pente·u → wet = résidu · S · porte · niveau → filtre de sortie (3 sections) → coupe-continu 20 Hz.
+// Porte de niveau relatif RÉGULIÈRE (ouverture douce sur 12 dB, plancher 0,3, relâchement 100 ms) : sinon le wet pompe (mesuré : écart-type 66,8 dB → 7,7 dB).
 // Profils : Doux (tanh), Chaud (tanh décalé, paires), Mordant (cubique borné), Mordant chaud (cubique borné décalé).
 // LATENCE : 20 échantillons de base. process() renvoie le wet aligné sur l'entrée retardée de 20. Aucune dépendance JUCE ; aucune allocation dans process().
 #pragma once
@@ -40,6 +41,7 @@ public:
         for (auto& o : out) o.set (zc);
         cS = std::exp (-1.0 / (0.4 * fs));
         cE = std::exp (-1.0 / (0.003 * fs));
+        cPorte = std::exp (-1.0 / (0.1 * fs));
         rDc = 1.0 - 2.0 * kPi * 20.0 / fs;
         reset();
         setTilt (tilt);
@@ -64,6 +66,7 @@ public:
         src.reset(); src2.reset(); tiltLo.reset(); tiltHi.reset();
         for (auto& o : out) o.reset();
         zS = zE = 0.0;
+        yPorte = 0.0;
         x1 = 0.0;
         hUp.reset(); hY.reset();
         du.init (0.0); dS.init (1e-7); dp.init (0.0);
@@ -80,8 +83,9 @@ public:
         zE = (1.0 - cE) * a + cE * zE;
         const double S = zS * (kPi / 2.0) + 1e-7, e = zE * (kPi / 2.0);
         const double rel = 20.0 * std::log10 ((e + 1e-12) / S);
-        const double v = std::clamp ((rel - seuilDb) / 6.0, 0.0, 1.0);
-        const double porte = v * v * (3.0 - 2.0 * v);
+        const double v = std::clamp ((rel - seuilDb) / largeurDb, 0.0, 1.0);
+        yPorte = std::max (plancher + (1.0 - plancher) * (v * v * (3.0 - 2.0 * v)), cPorte * yPorte);      // attaque immédiate, relâchement 100 ms
+        const double porte = yPorte;
         const double u = drive * s / S;
         // ×2 : v0 = Σ H_UP[2k]·u[n−k], v1 = Σ H_UP[2k+1]·u[n−k]
         hUp.push (u);
@@ -102,7 +106,7 @@ public:
     }
 
 private:
-    static constexpr double seuilDb = 3.0, tiltDb = 9.0;
+    static constexpr double seuilDb = -3.0, largeurDb = 12.0, plancher = 0.3, tiltDb = 9.0;      // porte régulière (voir prisme_exciter_v2_stream.py)
 
     inline double pente() const { return profil == ProfilExc::Chaud ? 1.0 - std::tanh (0.35) * std::tanh (0.35) : 1.0; }
 
@@ -149,6 +153,7 @@ private:
     std::array<Biquad, 3> out;
     int nSrc = 2;
     bool tiltOn = false;
+    double cPorte = 0, yPorte = 0;
     double cS = 0, cE = 0, rDc = 0, zS = 0, zE = 0, x1 = 0, dcX = 0, dcY = 0;
     Historique<21> hUp;
     Historique<41> hY;
