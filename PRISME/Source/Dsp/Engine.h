@@ -8,6 +8,7 @@
 #include "Exciter.h"
 #include "ExciterV2.h"
 #include "ExciterV3.h"
+#include "FiltresBandes.h"
 #include "Lift.h"
 #include "Shape.h"
 #include "Tame.h"
@@ -42,6 +43,10 @@ struct BandeSpec
     double amount = 50.0, releaseMs = 150.0;
     // Liaison stéréo PARTIELLE des détecteurs L/R (Tame, Shape, Lift ; canal Stéréo) : 0 = indépendants, 1 = mêmes décisions (défaut 0,5)
     double link = 0.5;
+    // Filtres de la bande (coupe-bas / coupe-haut, phase compensée) — hors de l'égalité : ils ne reconstruisent jamais la bande
+    bool lcOn = false, hcOn = false;
+    double lcF = 20.0, hcF = 20000.0;
+    int lcPente = 12, hcPente = 12;
 
     bool actif() const { return on && gainDb != 0.0; }      // gain 0 : sortie = entrée retardée exactement
     bool operator== (const BandeSpec& o) const
@@ -214,13 +219,21 @@ public:
         secL.init (0.0);
         secR.init (0.0);
         bandes.clear();
-        for (const auto& s : specs)
+        filt.prepare (fs, true);
+        for (size_t i = 0; i < specs.size(); ++i)
         {
+            const auto& s = specs[i];
+            if (i < (size_t) FiltresBandes::nBandes)
+            {
+                filt.regle ((int) i, false, { s.lcOn, s.lcF, s.lcPente }, s.actif());
+                filt.regle ((int) i, true, { s.hcOn, s.hcF, s.hcPente }, s.actif());
+            }
             if (! s.actif()) continue;
             auto b = std::make_unique<BandeProc>();
             b->prepare (fs, s);
-            bandes.push_back (std::move (b));
+            bandes.push_back ({ (int) i, std::move (b) });
         }
+        filt.miseAJourBloc (0);
     }
 
     // Traite n échantillons stéréo (in et out peuvent être identiques).
@@ -230,13 +243,16 @@ public:
         {
             const double L = inL[i], R = inR[i];
             double oL = secL.push (L), oR = secR.push (R);
+            filt.sec (oL, oR);                                  // passe-tout des filtres actifs
             for (auto& b : bandes)
             {
                 double dL, dR;
-                b->process (L, R, dL, dR);
+                b.second->process (L, R, dL, dR);
+                if (b.first < FiltresBandes::nBandes) filt.delta (b.first, dL, dR);
                 oL += dL;
                 oR += dR;
             }
+            filt.avance();
             outL[i] = oL;
             outR[i] = oR;
         }
@@ -245,6 +261,7 @@ public:
 private:
     double fs = 48000;
     Retard<Exciter::latence> secL, secR;
-    std::vector<std::unique_ptr<BandeProc>> bandes;
+    std::vector<std::pair<int, std::unique_ptr<BandeProc>>> bandes;       // (emplacement, bande)
+    FiltresBandes filt;
 };
 }

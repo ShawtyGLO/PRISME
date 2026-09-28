@@ -126,6 +126,7 @@ void PrismeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     bufR.assign ((size_t) cap, 0.0);
     for (auto& w : wetTmp) w.assign ((size_t) cap, 0.0f);
     for (auto& w : wet) w.f.reset();
+    filtres.prepare (sampleRate, true);
     bypassMix.reset (sampleRate, 0.01);
     bypassMix.setCurrentAndTargetValue (prismeParams::raw (apvts, "bypass") > 0.5f ? 0.0f : 1.0f);
     ringCap = (std::int64_t) ((histSeconds + 2.5) * sampleRate);
@@ -348,6 +349,16 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             if (s.cur && dn != s.lastDens) { s.cur->setDens (dn); s.lastDens = dn; }
         }
 
+        // ---- filtres de bande : réglages du bloc (bande active = présente et non coupée) ----
+        for (int b = 0; b < prismeParams::nBands; ++b)
+        {
+            const auto sp = prismeParams::readSpec (apvts, b);
+            const bool actif = slots[(size_t) b].cur != nullptr && sp.on;
+            filtres.regle (b, false, { sp.lcOn, sp.lcF, sp.lcPente }, actif);
+            filtres.regle (b, true, { sp.hcOn, sp.hcF, sp.hcPente }, actif);
+        }
+        filtres.miseAJourBloc (n);
+
         // ---- entrée : anneau d'historique + conversion en double ----
         for (int i = 0; i < n; ++i)
         {
@@ -364,6 +375,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         {
             const double L = bufL[(size_t) i], R = bufR[(size_t) i];
             const double dryL = secL.push (L), dryR = secR.push (R);
+            double apL = dryL, apR = dryR;
+            filtres.sec (apL, apR);                            // sec passé par les passe-tout des filtres actifs
             double sumL = 0.0, sumR = 0.0, soloL = 0.0, soloR = 0.0;
             for (size_t si = 0; si < slots.size(); ++si)
             {
@@ -380,13 +393,15 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                     ++s.fadePos;
                 }
                 else { dL = cL; dR = cR; }
+                filtres.delta ((int) si, dL, dR);
                 sumL += dL; sumR += dR;
                 if (solo[si]) { soloL += dL; soloR += dR; }
                 if (wetOn) wetTmp[si][(size_t) i] = (float) (0.5 * ((s.cur && s.cur->getSpec().canal == prisme::Canal::Side) ? dL - dR : dL + dR));   // Side : d à gauche, −d à droite
             }
+            filtres.avance();
             const double g = (double) outGain.getNextValue();
             const double bm = (double) bypassMix.getNextValue();
-            const double wL = anySolo ? soloL : (delta ? sumL : dryL + sumL), wR = anySolo ? soloR : (delta ? sumR : dryR + sumR);
+            const double wL = anySolo ? soloL : (delta ? sumL : apL + sumL), wR = anySolo ? soloR : (delta ? sumR : apR + sumR);
             bufL[(size_t) i] = (bm * wL + (1.0 - bm) * dryL) * g;
             bufR[(size_t) i] = (bm * wR + (1.0 - bm) * dryR) * g;
         }

@@ -111,7 +111,8 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44",
         y = tame_band(sig, fs, shape=sh, f0=f0, q=q, gain_db=g, width=wd, block=8192)
         dump(nom, sig, y)
         man.append(f"tame {nom} {fs} {sh} {f0} {q} {g} {wd}")
-from prisme_engine_stream import traite
+from prisme_engine_stream import traite, LATENCE as LAT_ENG
+from prisme_filtres import applique
 from tests_engine import config as config_type
 cfg2 = config_type()
 cfg2[0].update(type="lift", cible=None, gain_db=6.0, amount=70.0, canal="stereo")
@@ -128,15 +129,27 @@ cfg3[4].update(type="tame", gain_db=-3.0, canal="stereo", link=0.0)
 xs_full = load(SRC)[1]
 xstereo = np.ascontiguousarray(xs_full[int(30 * fs0): int(32 * fs0)])
 np.asarray(np.ascontiguousarray(xs_full[int(30 * fs0): int(42 * fs0)]), dtype="<f8").tofile(os.path.join(OUT, "music12.f64"))     # 12 s stéréo entrelacées : test de préchauffage
-for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3)):
+cfg4 = config_type()
+cfg4[0].update(lc_on=True, lc_f=40.0, lc_pente=24)
+cfg4[1].update(hc_on=True, hc_f=3000.0, hc_pente=12)
+cfg4[2].update(lc_on=True, lc_f=300.0, lc_pente=12, hc_on=True, hc_f=2500.0, hc_pente=24)
+cfg4[4].update(lc_on=True, lc_f=6000.0, lc_pente=24, hc_on=True, hc_f=15000.0, hc_pente=12)
+for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3), ("filtres", cfg4)):
     y = traite(xstereo, int(fs0), cfg)
+    filt = {i: [("lc", s["lc_f"], s["lc_pente"]) if s.get("lc_on") else None, ("hc", s["hc_f"], s["hc_pente"]) if s.get("hc_on") else None]
+            for i, s in enumerate(cfg) if s.get("on", True) and s["gain_db"] != 0.0 and (s.get("lc_on") or s.get("hc_on"))}
+    if filt:                                                   # bandes indépendantes : delta_i = traite(bande i seule) − sec retardé
+        D = LAT_ENG
+        sec = np.concatenate([np.zeros((D, 2)), xstereo[:-D]])
+        deltas = {i: traite(xstereo, int(fs0), [s]) - sec for i, s in enumerate(cfg) if s.get("on", True) and s["gain_db"] != 0.0}
+        y = applique(sec, deltas, filt, int(fs0))
     np.asarray(xstereo, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.in.f64"))
     np.asarray(y, dtype="<f8").tofile(os.path.join(OUT, f"engine_{nom}.out.f64"))
     with open(os.path.join(OUT, f"engine_{nom}.cfg"), "w", encoding="utf-8") as f:
         for s in cfg:
             f.write(" ".join(str(v) for v in (int(s.get("on", True)), s["type"], s["shape"], s["f0"], s["q"], s["gain_db"], s.get("canal", "stereo"), s.get("profil", "mordant_chaud"),
                                             s.get("source", "auto"), s.get("width", 0.5), s.get("cible") or "transitoires", s.get("time_ms") or 0.0, s.get("sens", 0.85),
-                                            s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5), s.get("purete", 0.0))) + "\n")
+                                            s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5), s.get("purete", 0.0), int(s.get("lc_on", False)), s.get("lc_f", 20.0), s.get("lc_pente", 12), int(s.get("hc_on", False)), s.get("hc_f", 20000.0), s.get("hc_pente", 12))) + "\n")
     man.append(f"engine engine_{nom} {int(fs0)} x 0 0")
 for fs in (44100, 48000, 88200, 96000, 192000):
     for sh in ("bell", "highshelf", "lowshelf"):

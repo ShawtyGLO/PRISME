@@ -28,13 +28,19 @@ private:
     float yOf (float g) const;
     float gOf (float y) const;
     static float response (int shape, float f0, float q, float gain, float f);
+    float magFiltre (int band, float f) const;                 // module des filtres de la bande (Linkwitz-Riley)
+    float effectif (int band, int shape, float f0, float q, float gain, float f) const;   // effet de la bande, filtres compris
+    float fyDb (float db) const;
+    int triangleAt (juce::Point<int> p) const;                 // 0 coupe-bas, 1 coupe-haut, −1 aucun
+    juce::Rectangle<int> autresRect() const;
+    void setFiltre (int k, bool on, float f);
     void setParam (const juce::String& id, float denormalised, bool gesture);
 
     PrismeProcessor& proc;
     std::function<int()> selGet;
     std::function<void (int)> selSet;
     bool showSpec = true;
-    int dragBand = -1;
+    int dragBand = -1, dragFilt = -1;
 
     juce::dsp::FFT fft { 11 };
     juce::dsp::WindowingFunction<float> window { 2048, juce::dsp::WindowingFunction<float>::hann };

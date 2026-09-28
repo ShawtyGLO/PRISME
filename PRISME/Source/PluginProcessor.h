@@ -109,6 +109,7 @@ private:
     std::array<std::vector<float>, prismeParams::nBands> wetTmp;
     std::atomic<bool> analyserOn { false };
     juce::SmoothedValue<float> bypassMix;
+    prisme::FiltresBandes filtres;                         // coupe-bas / coupe-haut par bande, phase compensée
 
     // Historique de l'entrée (anneau) : préchauffage des nouvelles bandes.
     std::vector<double> ringL, ringR;

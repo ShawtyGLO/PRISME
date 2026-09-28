@@ -158,8 +158,9 @@ int main (int argc, char** argv)
             std::vector<BandeSpec> specs;
             std::string ltype, lforme, lcanal, lmode, lsource, lcible;
             int on;
-            double lf0, lq, lg, lw, ltime, lsens, lam, lrel, llink, lpur;
-            while (cfg >> on >> ltype >> lforme >> lf0 >> lq >> lg >> lcanal >> lmode >> lsource >> lw >> lcible >> ltime >> lsens >> lam >> lrel >> llink >> lpur)
+            double lf0, lq, lg, lw, ltime, lsens, lam, lrel, llink, lpur, llcf, lhcf;
+            int llc, llcp, lhc, lhcp;
+            while (cfg >> on >> ltype >> lforme >> lf0 >> lq >> lg >> lcanal >> lmode >> lsource >> lw >> lcible >> ltime >> lsens >> lam >> lrel >> llink >> lpur >> llc >> llcf >> llcp >> lhc >> lhcf >> lhcp)
             {
                 BandeSpec b;
                 b.on = on != 0;
@@ -170,6 +171,7 @@ int main (int argc, char** argv)
                 b.source = lsource == "auto" ? SourceExc::Auto : SourceExc::Bande;
                 b.width = lw; b.cible = lcible == "sustain" ? Shape::Cible::Sustain : Shape::Cible::Transitoires;
                 b.timeMs = ltime; b.sens = lsens; b.amount = lam; b.releaseMs = lrel; b.link = llink; b.dens = lpur;
+                b.lcOn = llc != 0; b.lcF = llcf; b.lcPente = llcp; b.hcOn = lhc != 0; b.hcF = lhcf; b.hcPente = lhcp;
                 specs.push_back (b);
             }
             const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");

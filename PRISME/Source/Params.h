@@ -37,6 +37,16 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "on"), 1 }, n + "active", true));
         layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "solo"), 1 }, n + U8 ("delta (écoute seule)"), false));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "tilt"), 1 }, n + "tilt (mode Bande)", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+        {
+            juce::NormalisableRange<float> rfl (20.0f, 20000.0f, 0.01f);
+            rfl.setSkewForCentre (1000.0f);
+            layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "lc_on"), 1 }, n + U8 ("coupe-bas actif"), false));
+            layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "lc_f"), 1 }, n + U8 ("coupe-bas fréquence"), rfl, 20.0f));
+            layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "lc_pente"), 1 }, n + U8 ("coupe-bas pente"), sa ({ "12 dB/oct", "24 dB/oct" }), 0));
+            layout.add (std::make_unique<juce::AudioParameterBool>   (P { pid (b, "hc_on"), 1 }, n + U8 ("coupe-haut actif"), false));
+            layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "hc_f"), 1 }, n + U8 ("coupe-haut fréquence"), rfl, 20000.0f));
+            layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "hc_pente"), 1 }, n + U8 ("coupe-haut pente"), sa ({ "12 dB/oct", "24 dB/oct" }), 0));
+        }
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "purete"), 1 }, n + U8 ("pureté (Exciter)"), juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "link"), 1 }, n + "liaison L/R (Tame, Shape, Lift)", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
         layout.add (std::make_unique<juce::AudioParameterFloat>  (P { pid (b, "drive"), 1 }, n + "saturation", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.71f));      // 0,71 → drive 2,5
@@ -113,6 +123,12 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     sp.sens    = raw (s, pid (b, "sens"));
     sp.amount  = raw (s, pid (b, "amount"));
     sp.releaseMs = raw (s, pid (b, "release"));
+    sp.lcOn    = raw (s, pid (b, "lc_on")) > 0.5f;
+    sp.lcF     = raw (s, pid (b, "lc_f"));
+    sp.lcPente = juce::roundToInt (raw (s, pid (b, "lc_pente"))) == 1 ? 24 : 12;
+    sp.hcOn    = raw (s, pid (b, "hc_on")) > 0.5f;
+    sp.hcF     = raw (s, pid (b, "hc_f"));
+    sp.hcPente = juce::roundToInt (raw (s, pid (b, "hc_pente"))) == 1 ? 24 : 12;
     return sp;
 }
 }
