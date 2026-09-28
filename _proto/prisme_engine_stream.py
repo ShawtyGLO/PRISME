@@ -7,7 +7,7 @@ Tame et du Shape (qui n'ont aucune latence propre) sont retardés d'autant pour 
 → à déclarer à l'hôte (`setLatencySamples(20)`) ; constante, que des Exciters soient actifs ou non (les hôtes n'aiment pas une latence qui change).
 """
 import numpy as np
-from prisme_exciter_v2_stream import ExciterV2Stream
+from prisme_exciter_v3_stream import ExciterV3Stream
 from prisme_exciter_stream import Delai, D_OS
 from prisme_tame import Tame
 from prisme_shape import Shape
@@ -34,8 +34,8 @@ class EngineStream:
     def _creer(self, spec):
         t, sh, f0, q, g = spec["type"], spec["shape"], spec["f0"], spec["q"], spec["gain_db"]
         if t == "exciter":
-            return ExciterV2Stream(self.fs, shape=sh, f0=f0, q=q, gain_db=g, profil=spec.get("profil", "mordant_chaud"), source=spec.get("source", "auto"),
-                                   drive=spec.get("drive", 2.5), tilt=spec.get("tilt", 0.0))
+            return ExciterV3Stream(self.fs, shape=sh, f0=f0, q=q, gain_db=g, profil=spec.get("profil", "mordant_chaud"),
+                                   drive=spec.get("drive", 2.5), tilt=spec.get("tilt", 0.0), purete=spec.get("purete", 0.0))
         if t == "tame":
             return Tame(self.fs, sh, f0, q, g, spec.get("width", 0.5))
         if t == "shape":

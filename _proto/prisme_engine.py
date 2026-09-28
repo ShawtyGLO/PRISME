@@ -17,7 +17,7 @@ from prisme_band import excite_band
 from prisme_tame import tame_band
 from prisme_shape import shape_band
 from prisme_lift import lift_band
-from prisme_exciter_v2_stream import excite_v2_aligne
+from prisme_exciter_v3_stream import excite_v3_aligne
 from prisme_link import PAIRES
 from prisme_tame import Tame
 from prisme_shape import Shape
@@ -34,9 +34,9 @@ def bandes_defaut():
 def _fn(spec, fs):
     t, sh, f0, q, g = spec["type"], spec["shape"], spec["f0"], spec["q"], spec["gain_db"]
     if t == "exciter":
-        # Exciter v2 : seuil relatif, wet sans normalisation ; entrée MONO (lié : voir delta_bande)
-        return lambda z: z + excite_v2_aligne(z, fs, shape=sh, f0=f0, q=q, gain_db=g, profil=spec.get("profil", "mordant_chaud"), source=spec.get("source", "auto"),
-                                              drive=spec.get("drive", 2.5), tilt=spec.get("tilt", 0.0))
+        # Exciter v3 « Aural » : zone saturée entière (+ Pureté), entrée MONO (lié : voir delta_bande)
+        return lambda z: z + excite_v3_aligne(z, fs, shape=sh, f0=f0, q=q, gain_db=g, profil=spec.get("profil", "mordant_chaud"),
+                                              drive=spec.get("drive", 2.5), tilt=spec.get("tilt", 0.0), purete=spec.get("purete", 0.0))
     if t == "tame":
         return lambda z: tame_band(z, fs, shape=sh, f0=f0, q=q, gain_db=g, width=spec.get("width", 0.5))
     if t == "shape":
@@ -53,7 +53,7 @@ def delta_bande(x, fs, spec):
         return np.zeros_like(x)
     fn, canal = _fn(spec, fs), spec.get("canal", "stereo")
     if spec["type"] == "exciter" and canal == "stereo":
-        canal = "mid"                                         # Exciter v2 : non-linéarité LIÉE (source = milieu, même wet sur L et R)
+        canal = "mid"                                         # Exciter : non-linéarité LIÉE (source = milieu, même wet sur L et R)
     L, R = x[:, 0], x[:, 1]
     z = np.zeros(len(L))
     if canal == "stereo":

@@ -425,9 +425,9 @@ void BandCard::rebuild (int b)
         typeSegTitles.push_back (title);
         addAndMakeVisible (*typeSegs.back());
     };
-    if (type == 0)      { addSeg ("mode", "PROFIL", pp::modeNames()); addSeg ("source", "SOURCE", pp::sourceNames()); addKnob ("drive", "Harmoniques", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
-                          addKnob ("dens", U8 ("Densité"), [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
-                          if (juce::roundToInt (pp::raw (proc.apvts, pp::pid (b, "source"))) == 1) addKnob ("tilt", "Tilt", [] (double v) { return (v > 0 ? juce::String ("+") : juce::String()) + juce::String (v, 2); }); }
+    if (type == 0)      { addSeg ("mode", "PROFIL", pp::modeNames()); addKnob ("drive", "Harmoniques", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
+                          addKnob ("purete", U8 ("Pureté"), [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; });
+                          addKnob ("tilt", "Tilt", [] (double v) { return (v > 0 ? juce::String ("+") : juce::String()) + juce::String (v, 2); }); }
     else if (type == 1) { addKnob ("width", "Largeur", [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; }); }
     else if (type == 2)
     {
@@ -447,7 +447,7 @@ void BandCard::rebuild (int b)
                             U8 ("L : ne traite que le canal gauche."), U8 ("R : ne traite que le canal droit.") });
     aide (*posKnobs[0], U8 ("Fréquence de la bande (pour un shelf : fréquence de coupure). Maj = réglage fin, double-clic = valeur par défaut."));
     aide (*posKnobs[1], U8 ("Q : largeur de la cloche (plus élevé = plus étroit). Sans effet sur les shelfs."));
-    const juce::String aideGain[4] = { U8 ("Gain de l'Exciter (0 à +15 dB) : dose du signal ajouté (wet). Toutes les bandes sont multipliées par Intensité (en haut)."),
+    const juce::String aideGain[4] = { U8 ("Gain de l'Exciter (0 à +15 dB) : renfort saturé de la zone (+6 dB ≈ la zone renforcée de 6 dB, avec le grain du profil). Toutes les bandes sont multipliées par Intensité (en haut)."),
                                        U8 ("Gain du Tame : négatif = atténue les résonances jusqu'à cette profondeur, positif = accentue les pics déjà forts."),
                                        U8 ("Gain du Shape : appliqué aux transitoires ou au sustain (selon Cible), dans les deux sens."),
                                        U8 ("Gain du Lift : positif = relève ce qui est faible, négatif = l'abaisse (expandeur).") };
@@ -456,10 +456,9 @@ void BandCard::rebuild (int b)
     {
         typeSegs[0]->setOptionHelp ({ U8 ("Doux : distorsion douce (tanh), harmoniques impaires discrètes : brillance sans agressivité."), U8 ("Chaud : distorsion asymétrique, harmoniques paires : chaleur et épaisseur."),
                                       U8 ("Mordant : écrêtage plus dur, harmoniques impaires : mordant et présence."), U8 ("Mordant chaud : écrêtage dur asymétrique : mordant et chaleur (profil de référence).") });
-        typeSegs[1]->setOptionHelp ({ U8 ("Auto : la saturation est alimentée par une bande centrée à f0/3 : ses harmoniques tombent dans la zone réglée."), U8 ("Bande : la saturation est alimentée par la zone elle-même (permet le Tilt).") });
-        aide (*typeKnobs[0], U8 ("Harmoniques : dureté de la saturation, de douce à dure (plus dur = plus d'harmoniques élevées)."));
-        aide (*typeKnobs[1], U8 ("Densité : 0 % = le wet ne réagit qu'aux pics (salves nettes, peut pomper) ; 100 % = wet continu et régulier (halo)."));
-        if (typeKnobs.size() > 2) aide (*typeKnobs[2], U8 ("Tilt : penche la source avant la saturation : négatif = plus de saturation dans les graves de la zone, positif = dans les aigus."));
+        aide (*typeKnobs[0], U8 ("Harmoniques : dureté de la saturation, de douce à dure (plus dur = plus d'harmoniques élevées). Le caractère ne dépend pas du niveau d'entrée."));
+        aide (*typeKnobs[1], U8 ("Pureté : 0 % = la zone saturée entière est ajoutée (renfort et grain, naturel) ; 100 % = seulement les harmoniques nouvelles (plus fin, plus « piquant »)."));
+        if (typeKnobs.size() > 2) aide (*typeKnobs[2], U8 ("Tilt : penche la zone avant la saturation : négatif = plus de saturation dans le bas de la zone, positif = dans le haut."));
     }
     else if (type == 1)
         aide (*typeKnobs[0], U8 ("Largeur de traitement : de fin (résonances étroites) à large (bosses larges)."));

@@ -5,6 +5,7 @@
 #include "../Source/Dsp/Shape.h"
 #include "../Source/Dsp/Exciter.h"
 #include "../Source/Dsp/ExciterV2.h"
+#include "../Source/Dsp/ExciterV3.h"
 #include "../Source/Dsp/Tame.h"
 #include "../Source/Dsp/Engine.h"
 #include <cstdlib>
@@ -38,7 +39,7 @@ int main (int argc, char** argv)
     std::ifstream man (dir + "/manifest.txt");
     if (! man) { std::cout << "manifest introuvable dans " << dir << "\n"; return 2; }
     int total = 0, echecs = 0;
-    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0, pireEngine = 0, pireExc2 = 0;
+    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0, pireEngine = 0, pireExc2 = 0, pireExc3 = 0;
     const double tolTame = 1e-7;                         // −140 dB ; le prototype calcule sa chaîne spectrale en float32 (voir Tame.h)
     std::string ligne;
     while (std::getline (man, ligne))
@@ -116,6 +117,24 @@ int main (int argc, char** argv)
             pireExc2 = std::max (pireExc2, e);
             if (e > 1e-7) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
+        else if (type == "exciter3")
+        {
+            double g, dr, tl, pu;
+            std::string pr;
+            is >> g >> pr >> dr >> tl >> pu;
+            const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
+            ++total;
+            if (xs.empty() || xs.size() != ref.size()) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
+            double crete = 0, e = 0;
+            for (double v : ref) crete = std::max (crete, std::abs (v));
+            const ProfilExc p = pr == "doux" ? ProfilExc::Doux : pr == "chaud" ? ProfilExc::Chaud : pr == "mordant" ? ProfilExc::Mordant : ProfilExc::MordantChaud;
+            ExciterV3 ex;
+            ex.prepare (fs, forme (sh), f0, q, g, p, dr, tl, pu);
+            for (size_t i = 0; i < xs.size(); ++i) e = std::max (e, std::abs (ex.process (xs[i]) - ref[i]));
+            e /= std::max (crete, 1e-30);
+            pireExc3 = std::max (pireExc3, e);
+            if (e > 1e-7) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
+        }
         else if (type == "tame")
         {
             double g, wd;
@@ -139,8 +158,8 @@ int main (int argc, char** argv)
             std::vector<BandeSpec> specs;
             std::string ltype, lforme, lcanal, lmode, lsource, lcible;
             int on;
-            double lf0, lq, lg, lw, ltime, lsens, lam, lrel, llink;
-            while (cfg >> on >> ltype >> lforme >> lf0 >> lq >> lg >> lcanal >> lmode >> lsource >> lw >> lcible >> ltime >> lsens >> lam >> lrel >> llink)
+            double lf0, lq, lg, lw, ltime, lsens, lam, lrel, llink, lpur;
+            while (cfg >> on >> ltype >> lforme >> lf0 >> lq >> lg >> lcanal >> lmode >> lsource >> lw >> lcible >> ltime >> lsens >> lam >> lrel >> llink >> lpur)
             {
                 BandeSpec b;
                 b.on = on != 0;
@@ -150,7 +169,7 @@ int main (int argc, char** argv)
                 b.profil = lmode == "doux" ? ProfilExc::Doux : lmode == "chaud" ? ProfilExc::Chaud : lmode == "mordant" ? ProfilExc::Mordant : ProfilExc::MordantChaud;
                 b.source = lsource == "auto" ? SourceExc::Auto : SourceExc::Bande;
                 b.width = lw; b.cible = lcible == "sustain" ? Shape::Cible::Sustain : Shape::Cible::Transitoires;
-                b.timeMs = ltime; b.sens = lsens; b.amount = lam; b.releaseMs = lrel; b.link = llink;
+                b.timeMs = ltime; b.sens = lsens; b.amount = lam; b.releaseMs = lrel; b.link = llink; b.dens = lpur;
                 specs.push_back (b);
             }
             const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
@@ -199,7 +218,7 @@ int main (int argc, char** argv)
             if (e > 1e-9) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
     }
-    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; exciter v2 : " << pireExc2 << " ; tame : " << pireTame << " ; engine : " << pireEngine << " (écarts relatifs max)\n";
+    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; exciter v2 : " << pireExc2 << " ; exciter v3 : " << pireExc3 << " ; tame : " << pireTame << " ; engine : " << pireEngine << " (écarts relatifs max)\n";
     // W01 : une bande NEUVE, préchauffée avec 2,5 s d historique, doit avoir le niveau de delta d'une bande vivante depuis le début
     {
         const auto m = lire (dir + "/music12.f64");

@@ -20,6 +20,7 @@ from prisme_shape import shape_band
 from prisme_exciter_stream import exciter_stream, H0, H_UP
 from prisme_tame import tame_band
 from prisme_exciter_v2_stream import exciter_v2_stream
+from prisme_exciter_v3_stream import exciter_v3_stream
 
 OUT = os.path.join(HERE, "..", "PRISME", "tests", "refs")
 os.makedirs(OUT, exist_ok=True)
@@ -94,6 +95,14 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)),
         y = exciter_v2_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, profil=pr, source=so, drive=dr, tilt=tl, dens=dn)
         dump(nom, sig, y)
         man.append(f"exciter2 {nom} {fs} {sh} {f0} {q} {g} {pr} {so} {dr} {tl} {dn}")
+E3CFG = [("mordant_chaud", "bell", 3000.0, 0.71, 6.0, 2.5, 0.0, 0.0), ("doux", "bell", 1000.0, 1.0, 8.0, 1.5, 0.0, 0.5), ("chaud", "highshelf", 9600.0, 0.71, 5.0, 3.0, 0.6, 0.0),
+         ("mordant", "lowshelf", 120.0, 0.71, 6.0, 2.5, -0.5, 0.2), ("mordant_chaud", "bell", 5000.0, 2.0, 12.0, 6.0, 0.0, 1.0)]
+for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)), (96000, "syn96", synth(96000))):
+    for i, (pr, sh, f0, q, g, dr, tl, pu) in enumerate(E3CFG):
+        nom = f"exc3_{nom_sig}_{i}"
+        y = exciter_v3_stream(sig, fs, block=8192, shape=sh, f0=f0, q=q, gain_db=g, profil=pr, drive=dr, tilt=tl, purete=pu)
+        dump(nom, sig, y)
+        man.append(f"exciter3 {nom} {fs} {sh} {f0} {q} {g} {pr} {dr} {tl} {pu}")
 TCFG = [("bell", 3000.0, 0.7, -9.0, 0.5), ("bell", 632.0, 1.2, -4.0, 1.0), ("bell", 250.0, 0.71, 6.0, 0.2), ("highshelf", 9600.0, 0.71, -6.0, 0.5),
         ("lowshelf", 120.0, 0.71, -6.0, 0.8), ("bell", 8000.0, 2.0, -9.0, 0.0)]
 for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44", synth(44100)[:int(4 * 44100)]), (96000, "syn96", synth(96000)[:int(3 * 96000)])):
@@ -106,7 +115,7 @@ from prisme_engine_stream import traite
 from tests_engine import config as config_type
 cfg2 = config_type()
 cfg2[0].update(type="lift", cible=None, gain_db=6.0, amount=70.0, canal="stereo")
-cfg2[1].update(type="exciter", gain_db=5.0, mode="triode", source="band", canal="left")
+cfg2[1].update(type="exciter", gain_db=5.0, profil="chaud", purete=0.4, canal="left")
 cfg2[2].update(type="lift", gain_db=-6.0, amount=60.0, release_ms=300.0, canal="side")
 cfg2[3].update(type="tame", gain_db=4.0, width=0.3, canal="right")
 cfg2[4].update(type="shape", cible="sustain", gain_db=-4.0, time_ms=None, canal="mid")
@@ -127,7 +136,7 @@ for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3)):
         for s in cfg:
             f.write(" ".join(str(v) for v in (int(s.get("on", True)), s["type"], s["shape"], s["f0"], s["q"], s["gain_db"], s.get("canal", "stereo"), s.get("profil", "mordant_chaud"),
                                             s.get("source", "auto"), s.get("width", 0.5), s.get("cible") or "transitoires", s.get("time_ms") or 0.0, s.get("sens", 0.85),
-                                            s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5))) + "\n")
+                                            s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5), s.get("purete", 0.0))) + "\n")
     man.append(f"engine engine_{nom} {int(fs0)} x 0 0")
 for fs in (44100, 48000, 88200, 96000, 192000):
     for sh in ("bell", "highshelf", "lowshelf"):

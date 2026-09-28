@@ -7,6 +7,7 @@
 #pragma once
 #include "Exciter.h"
 #include "ExciterV2.h"
+#include "ExciterV3.h"
 #include "Lift.h"
 #include "Shape.h"
 #include "Tame.h"
@@ -29,7 +30,7 @@ struct BandeSpec
     // Exciter
     ProfilExc profil = ProfilExc::MordantChaud;              // Exciter v2 : Doux / Chaud / Mordant / Mordant chaud
     SourceExc source = SourceExc::Auto;
-    double dens = 1.0;                                      // « Densité » de la porte de l'Exciter (0 creuse … 1 régulière)
+    double dens = 0.0;                                      // Exciter v3 : « Pureté » (0 = zone saturée entière … 1 = harmoniques seules) — champ historique « dens »
     double tilt = 0.0;                                      // −1 … +1, mode Bande seulement
     double drive = 2.5;                                     // « Harmoniques » : niveau normalisé à l'entrée de la courbe (0,3 doux … 6 dur)
     // Tame
@@ -65,7 +66,7 @@ public:
             retard[k].init (0.0);
             switch (s.type)
             {
-                case TypeBande::Exciter: exc[k] = std::make_unique<ExciterV2>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.profil, s.source, s.drive, s.tilt, s.dens); break;
+                case TypeBande::Exciter: exc[k] = std::make_unique<ExciterV3>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.profil, s.drive, s.tilt, s.dens); break;      // dens porte la Pureté (Exciter v3)
                 case TypeBande::Tame:    tame[k] = std::make_unique<Tame>();   tame[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.width); break;
                 case TypeBande::Shape:   shape[k] = std::make_unique<Shape>(); shape[k]->prepare (fs, s.cible, s.forme, s.f0, s.q, s.gainDb, s.timeMs, s.sens); break;
                 case TypeBande::Lift:    lift[k] = std::make_unique<Lift>();   lift[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.amount, s.releaseMs); break;
@@ -94,7 +95,7 @@ public:
     {
         spec.dens = d;
         for (int i = 0; i < n; ++i)
-            if (exc[(size_t) i]) exc[(size_t) i]->setDensite (d);
+            if (exc[(size_t) i]) exc[(size_t) i]->setPurete (d);
     }                                       // en direct
 
     void setTilt (double t)
@@ -195,7 +196,7 @@ private:
 
     BandeSpec spec;
     int n = 1;
-    std::array<std::unique_ptr<ExciterV2>, 2> exc;
+    std::array<std::unique_ptr<ExciterV3>, 2> exc;
     std::array<std::unique_ptr<Tame>, 2> tame;
     std::array<std::unique_ptr<Shape>, 2> shape;
     std::array<std::unique_ptr<Lift>, 2> lift;
