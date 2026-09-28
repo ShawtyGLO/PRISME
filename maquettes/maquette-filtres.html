@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISME — filtres de bande</title>
+<style>
+  :root { --bg:#101215; --panel:#171a1f; --panel2:#1d2127; --line:#2a2f37; --txt:#e6e9ee; --mut:#8b93a1; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
+  .app { max-width:1100px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  header { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:20px; letter-spacing:.35em; font-weight:700; }
+  .sp { flex:1; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { background:var(--panel2); color:var(--mut); border:0; padding:6px 10px; cursor:pointer; font:inherit; border-right:1px solid var(--line); }
+  .seg button:last-child { border-right:0; }
+  .seg button.sel { background:#3a4250; color:var(--txt); }
+  .lab { color:var(--mut); font-size:11px; letter-spacing:.12em; text-transform:uppercase; margin-right:6px; }
+  .display { position:relative; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  canvas { display:block; width:100%; height:360px; touch-action:none; }
+  .tabs { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+  .tab { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 10px; cursor:pointer; position:relative; }
+  .tab.sel { background:var(--panel2); border-color:var(--c); }
+  .tab .t { font-weight:700; color:var(--c); }
+  .tab .s { color:var(--mut); font-size:12px; }
+  .tab .f { color:var(--mut); font-size:11px; margin-top:2px; }
+  .tab .bar { position:absolute; left:0; top:6px; bottom:6px; width:3px; background:var(--c); }
+  .help { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 12px; min-height:32px; color:var(--txt); }
+  .note { color:var(--mut); font-size:12px; }
+  @media (max-width:760px){ .tabs{ grid-template-columns:repeat(2,1fr);} canvas{height:300px;} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>PRISME</h1>
+    <span class="sp"></span>
+    <span class="lab">Autres filtres</span>
+    <div class="seg" id="autres"><button data-v="gris" class="sel">Grisés</button><button data-v="caches">Masqués</button></div>
+  </header>
+  <div class="display"><canvas id="cv"></canvas></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="help" id="help">Glissez les triangles en haut à gauche (coupe-bas) et à droite (coupe-haut) pour filtrer le signal ajouté par la bande sélectionnée.</div>
+  <div class="note">Maquette d'interface uniquement : le son n'est pas simulé. Triangle : glisser = fréquence · molette ou clic droit = pente 12 / 24 dB/oct · double-clic ou poussé contre le bord = désactiver. Les nœuds des bandes restent déplaçables comme dans le plugin.</div>
+</div>
+<script>
+const TYPES = { exciter:{nom:"Exciter", c:"#ff8a3d"}, tame:{nom:"Tame", c:"#35d0c0"}, shape:{nom:"Shape", c:"#a78bfa"}, lift:{nom:"Lift", c:"#7ddc6a"} };
+const FORMES = {lowshelf:"Shelf grave", bell:"Cloche", highshelf:"Shelf aigu"};
+const FMIN=20, FMAX=20000, GMAX=15;
+// bandes = capture de llg53 (2026-09-28)
+const bands = [
+  {type:"exciter", forme:"lowshelf",  f0:60,   q:.71, gain:4.9,  lc:{on:false,f:FMIN,pente:12}, hc:{on:true, f:400,pente:12}},
+  {type:"lift",    forme:"bell",      f0:215,  q:.71, gain:-4.5, lc:{on:false,f:FMIN,pente:12}, hc:{on:false,f:FMAX,pente:12}},
+  {type:"tame",    forme:"bell",      f0:215,  q:.71, gain:5.0,  lc:{on:false,f:FMIN,pente:12}, hc:{on:false,f:FMAX,pente:12}},
+  {type:"shape",   forme:"bell",      f0:2270, q:.71, gain:5.9,  lc:{on:true, f:1200,pente:24}, hc:{on:false,f:FMAX,pente:12}},
+  {type:"exciter", forme:"highshelf", f0:2620, q:.71, gain:3.1,  lc:{on:true, f:3500,pente:12}, hc:{on:true, f:14000,pente:24}}
+];
+let sel = 4, autres = "gris", drag = null;
+
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+const TOP = 34;                                   // bande réservée aux triangles
+const fx = f => Math.log(f/FMIN)/Math.log(FMAX/FMIN)*W();
+const xf = x => FMIN*Math.pow(FMAX/FMIN, x/W());
+const gy = g => TOP + (H()-TOP)/2 - g/GMAX*((H()-TOP)/2 - 14);
+const yg = y => (TOP + (H()-TOP)/2 - y)/((H()-TOP)/2 - 14)*GMAX;
+const fyDb = db => TOP + (-db/48)*(H()-TOP-8);     // courbe de filtre : 0 dB en haut, −48 dB en bas
+
+function forme(b, f){
+  const oct = Math.log2(f/b.f0), s = 1/Math.max(.25,b.q);
+  if (b.forme==="bell") return b.gain*Math.exp(-Math.pow(oct/(.55*s+.05),2));
+  const k = 1/(1+Math.exp(-oct*3.2/(s*.9+.2)));
+  return b.gain*(b.forme==="highshelf"? k : 1-k);
+}
+function magFiltre(b, f){                         // Butterworth : ordre 2 (12 dB/oct) ou 4 (24 dB/oct)
+  let m = 1;
+  if (b.lc.on){ const n = b.lc.pente/6; m *= 1/Math.sqrt(1+Math.pow(b.lc.f/f, 2*n)); }
+  if (b.hc.on){ const n = b.hc.pente/6; m *= 1/Math.sqrt(1+Math.pow(f/b.hc.f, 2*n)); }
+  return m;
+}
+function effectif(b, f){                          // le filtre agit sur le signal AJOUTÉ (delta)
+  const g = forme(b, f), a = Math.pow(10, g/20) - 1;
+  return 20*Math.log10(Math.max(1e-6, 1 + a*magFiltre(b, f)));
+}
+
+function resize(){ const r = cv.getBoundingClientRect(), d = devicePixelRatio||1; cv.width = r.width*d; cv.height = r.height*d; ctx.setTransform(d,0,0,d,0,0); draw(); }
+
+function tri(x, c, dir, actif){                   // triangle-poignée (pointe vers le bas)
+  ctx.beginPath();
+  ctx.moveTo(x-11, 6); ctx.lineTo(x+11, 6); ctx.lineTo(x, 28); ctx.closePath();
+  ctx.fillStyle = actif ? c : "#3a3f47"; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = "#0b0d10"; ctx.stroke();
+}
+
+function draw(){
+  const w = W(), h = H();
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#12151a"; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle="#15181d"; ctx.fillRect(0,0,w,TOP);
+  ctx.font="10px system-ui"; ctx.lineWidth=1;
+  for (const f of [30,50,100,200,500,1000,2000,5000,10000]){ const x=fx(f); ctx.strokeStyle="#242a32"; ctx.beginPath(); ctx.moveTo(x,TOP); ctx.lineTo(x,h); ctx.stroke(); ctx.fillStyle="#6c7482"; ctx.fillText(f>=1000?(f/1000)+"k":f, x+3, h-4); }
+  for (const g of [-12,-6,0,6,12]){ const y=gy(g); ctx.strokeStyle=g===0?"#39414c":"#22272e"; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); ctx.fillStyle="#6c7482"; ctx.fillText((g>0?"+":"")+g, 4, y-3); }
+
+  // courbes de bande (effectives : filtre compris)
+  bands.forEach((b,i)=>{
+    const c = TYPES[b.type].c;
+    ctx.beginPath(); ctx.moveTo(0, gy(0));
+    for (let x=0;x<=w;x+=2) ctx.lineTo(x, gy(effectif(b, xf(x))));
+    ctx.lineTo(w, gy(0)); ctx.closePath();
+    ctx.fillStyle = c + (i===sel ? "40" : "1a"); ctx.fill();
+    ctx.strokeStyle = c; ctx.globalAlpha = i===sel ? 1 : .55; ctx.lineWidth = i===sel ? 2 : 1;
+    ctx.beginPath(); let pen=false;
+    for (let x=0;x<=w;x+=2){ const g=effectif(b, xf(x)); if (Math.abs(g)<.08){pen=false;continue;} const y=gy(g); pen?ctx.lineTo(x,y):ctx.moveTo(x,y); pen=true; }
+    ctx.stroke(); ctx.globalAlpha=1;
+    if (i===sel && (b.lc.on || b.hc.on)){          // la forme SANS filtre, en pointillé, pour voir ce qui est retiré
+      ctx.setLineDash([4,4]); ctx.strokeStyle=c; ctx.globalAlpha=.45; ctx.beginPath(); pen=false;
+      for (let x=0;x<=w;x+=2){ const g=forme(b, xf(x)); if (Math.abs(g)<.08){pen=false;continue;} const y=gy(g); pen?ctx.lineTo(x,y):ctx.moveTo(x,y); pen=true; }
+      ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+    }
+  });
+  // somme
+  ctx.beginPath();
+  for (let x=0;x<=w;x+=2){ let s=0; bands.forEach(b=>s+=effectif(b,xf(x))); x?ctx.lineTo(x,gy(s)):ctx.moveTo(x,gy(s)); }
+  ctx.strokeStyle="#f4f6f8"; ctx.lineWidth=2; ctx.stroke();
+
+  // filtres : bande sélectionnée en couleur, autres grisées ou masquées
+  const ordre = bands.map((b,i)=>i).filter(i=>i!==sel).concat([sel]);
+  for (const i of ordre){
+    const b = bands[i]; if (!b.lc.on && !b.hc.on) continue;
+    if (i!==sel && autres==="caches") continue;
+    const c = i===sel ? TYPES[b.type].c : TYPES[b.type].c;
+    // trait fin ; on s'arrête où le filtre atteint le bas (pas de ligne plate jusqu'au bord)
+    ctx.beginPath(); let pen = false;
+    for (let x=0;x<=w;x+=2){
+      const db = 20*Math.log10(Math.max(magFiltre(b, xf(x)),1e-6));
+      if (db < -46){ pen=false; continue; }
+      const y = fyDb(db); pen ? ctx.lineTo(x,y) : ctx.moveTo(x,y); pen = true;
+    }
+    ctx.setLineDash(i===sel ? [] : [5,4]);                 // autres bandes : pointillés
+    ctx.strokeStyle = c; ctx.lineWidth = i===sel ? 1.5 : 1; ctx.globalAlpha = i===sel ? 1 : .45; ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    if (i===sel){                                  // zones coupées ombrées
+      ctx.fillStyle = "rgba(0,0,0,.28)";
+      if (b.lc.on) ctx.fillRect(0, TOP, fx(b.lc.f)*0.999, h-TOP);
+      if (b.hc.on) ctx.fillRect(fx(b.hc.f), TOP, w-fx(b.hc.f), h-TOP);
+    }
+  }
+  // nœuds
+  const rang = bands.map((b,i)=>i).sort((a,c)=>bands[a].f0-bands[c].f0);
+  bands.forEach((b,i)=>{
+    const x=fx(b.f0), y=gy(b.gain), r=i===sel?9:7;
+    ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fillStyle=TYPES[b.type].c; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle="#0b0d10"; ctx.stroke();
+    ctx.fillStyle="#0b0d10"; ctx.font="bold 10px system-ui"; ctx.textAlign="center"; ctx.fillText(rang.indexOf(i)+1, x, y+3.5); ctx.textAlign="left";
+  });
+  // triangles de la bande sélectionnée
+  const b = bands[sel], c = TYPES[b.type].c;
+  const xl = b.lc.on ? fx(b.lc.f) : 14, xr = b.hc.on ? fx(b.hc.f) : w-14;
+  tri(xl, c, 1, b.lc.on); tri(xr, c, -1, b.hc.on);
+  ctx.font="11px system-ui";
+  const proches = xr - xl < 260;                   // triangles proches : l'étiquette du coupe-bas passe sous la bande des triangles
+  ctx.fillStyle=b.lc.on?c:"#6c7482";
+  ctx.fillText(b.lc.on ? `${fmtF(b.lc.f)} · ${b.lc.pente} dB/oct` : "coupe-bas", Math.min(xl+15, w-150), proches ? TOP+14 : 20);
+  ctx.fillStyle=b.hc.on?c:"#6c7482"; ctx.textAlign="right";
+  ctx.fillText(b.hc.on ? `${fmtF(b.hc.f)} · ${b.hc.pente} dB/oct` : "coupe-haut", Math.max(xr-15, 150), 20); ctx.textAlign="left";
+}
+const fmtF = f => f>=1000 ? (f/1000).toFixed(2)+" k" : Math.round(f)+" Hz";
+
+function hit(e){
+  const r=cv.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top, b=bands[sel];
+  const xl = b.lc.on ? fx(b.lc.f) : 14, xr = b.hc.on ? fx(b.hc.f) : W()-14;
+  if (y < TOP+4){ if (Math.abs(x-xl) < 16) return {k:"lc"}; if (Math.abs(x-xr) < 16) return {k:"hc"}; }
+  let best=null, bd=18;
+  bands.forEach((bb,i)=>{ const d=Math.hypot(fx(bb.f0)-x, gy(bb.gain)-y); if (d<bd){bd=d;best={k:"node",i};} });
+  return best;
+}
+cv.addEventListener("pointerdown", e=>{ const h=hit(e); if(!h) return; if(h.k==="node"){ sel=h.i; renderTabs(); } drag=h; cv.setPointerCapture(e.pointerId); draw(); });
+cv.addEventListener("pointermove", e=>{
+  const r=cv.getBoundingClientRect(), x=Math.min(W(),Math.max(0,e.clientX-r.left)), y=e.clientY-r.top;
+  if (!drag){ const h=hit(e); cv.style.cursor = h ? (h.k==="node"?"grab":"ew-resize") : "default";
+    help.textContent = h && h.k==="lc" ? "Coupe-bas de la bande sélectionnée : glisser = fréquence, molette ou clic droit = pente (12 / 24 dB/oct), double-clic ou pousser contre le bord = désactiver."
+      : h && h.k==="hc" ? "Coupe-haut de la bande sélectionnée : glisser = fréquence, molette ou clic droit = pente (12 / 24 dB/oct), double-clic ou pousser contre le bord = désactiver."
+      : h ? "Nœud : glisser = fréquence et gain." : "Glissez les triangles en haut à gauche (coupe-bas) et à droite (coupe-haut) pour filtrer le signal ajouté par la bande sélectionnée."; return; }
+  const b=bands[sel];
+  const BORD = 10;                                          // poussé contre le bord → le filtre se désactive (comme un double-clic)
+  if (drag.k==="lc"){ if (x <= BORD) b.lc.on=false; else { b.lc.on=true; b.lc.f=Math.min(xf(x), b.hc.on? b.hc.f/1.2 : FMAX/1.2); } }
+  else if (drag.k==="hc"){ if (x >= W()-BORD) b.hc.on=false; else { b.hc.on=true; b.hc.f=Math.max(xf(x), b.lc.on? b.lc.f*1.2 : FMIN*1.2); } }
+  else { const bb=bands[drag.i]; bb.f0=Math.min(FMAX,Math.max(FMIN,xf(x))); bb.gain=Math.round(Math.max(-GMAX,Math.min(GMAX,yg(y)))*10)/10; }
+  renderTabs(); draw();
+});
+cv.addEventListener("pointerup", ()=>drag=null);
+cv.addEventListener("dblclick", e=>{ const h=hit(e); if(h && (h.k==="lc"||h.k==="hc")){ bands[sel][h.k].on=false; renderTabs(); draw(); } });
+function pente(h){ const f=bands[sel][h.k]; f.pente = f.pente===12 ? 24 : 12; f.on=true; renderTabs(); draw(); }
+cv.addEventListener("contextmenu", e=>{ const h=hit(e); if(h && (h.k==="lc"||h.k==="hc")){ e.preventDefault(); pente(h); } });
+cv.addEventListener("wheel", e=>{ const h=hit(e); if(h && (h.k==="lc"||h.k==="hc")){ e.preventDefault(); pente(h); } }, {passive:false});
+addEventListener("resize", resize);
+const help = document.getElementById("help");
+
+function renderTabs(){
+  const tabs=document.getElementById("tabs"); tabs.innerHTML="";
+  const rang = bands.map((b,i)=>i).sort((a,c)=>bands[a].f0-bands[c].f0);
+  rang.forEach((i,k)=>{
+    const b=bands[i], T=TYPES[b.type], d=document.createElement("div");
+    d.className="tab"+(i===sel?" sel":""); d.style.setProperty("--c",T.c);
+    const filt = [b.lc.on?`CB ${fmtF(b.lc.f)} ${b.lc.pente}`:null, b.hc.on?`CH ${fmtF(b.hc.f)} ${b.hc.pente}`:null].filter(Boolean).join(" · ");
+    d.innerHTML=`<span class="bar"></span><div class="t">${k+1} · ${T.nom}</div><div class="s">${FORMES[b.forme]} · ${fmtF(b.f0)} · ${(b.gain>0?"+":"")+b.gain.toFixed(1)} dB</div><div class="f">${filt || "sans filtre"}</div>`;
+    d.onclick=()=>{ sel=i; renderTabs(); draw(); };
+    tabs.appendChild(d);
+  });
+}
+document.querySelectorAll("#autres button").forEach(bt=>bt.onclick=()=>{ autres=bt.dataset.v; document.querySelectorAll("#autres button").forEach(x=>x.classList.toggle("sel",x===bt)); draw(); });
+resize(); renderTabs();
+</script>
+</body>
+</html>
