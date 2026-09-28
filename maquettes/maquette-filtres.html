@@ -203,7 +203,7 @@ function renderTabs(){
     const b=bands[i], T=TYPES[b.type], d=document.createElement("div");
     d.className="tab"+(i===sel?" sel":""); d.style.setProperty("--c",T.c);
     const filt = [b.lc.on?`CB ${fmtF(b.lc.f)} ${b.lc.pente}`:null, b.hc.on?`CH ${fmtF(b.hc.f)} ${b.hc.pente}`:null].filter(Boolean).join(" · ");
-    d.innerHTML=`<span class="bar"></span><div class="t">${k+1} · ${T.nom}</div><div class="s">${FORMES[b.forme]} · ${fmtF(b.f0)} · ${(b.gain>0?"+":"")+b.gain.toFixed(1)} dB</div><div class="f">${filt || "sans filtre"}</div>`;
+    d.innerHTML=`<span class="bar"></span><div class="t">${k+1} · ${T.nom}</div><div class="s">${FORMES[b.forme]} · ${fmtF(b.f0)} · ${(b.gain>0?"+":"")+b.gain.toFixed(1)} dB</div>`;
     d.onclick=()=>{ sel=i; renderTabs(); draw(); };
     tabs.appendChild(d);
   });
