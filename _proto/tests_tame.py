@@ -106,7 +106,7 @@ def run():
                 for w in (0.0, 1.0):
                     y = tame_band(s, fs, gain_db=g, width=w, **p)
                     fin = np.all(np.isfinite(y)); pire = max(pire, np.max(np.abs(y)) if fin else 99)
-                    borne = 1.5 * max(np.max(np.abs(s)), 1e-9) * (10 ** (24 / 20) if g > 0 else 1.0)          # cut : ≤ 1,5·crête d'entrée ; boost +24 dB : ≤ 1,5·×16
+                    borne = (2.0 if g < 0 else 1.5) * max(np.max(np.abs(s)), 1e-9) * (10 ** (24 / 20) if g > 0 else 1.0)          # cut : ≤ 2·crête d entrée (v4 : couper −24 dB tous les harmoniques d un carré change sa forme, crête ×1,62) ; boost +24 dB : ≤ 1,5·×16
                     ok &= fin and np.max(np.abs(y)) <= borne
                     if nom == "silence": ok &= np.all(y == 0)
     check("T03", "cas extrêmes × paramètres extrêmes", f"|y| max {pire:.2f}", ok)

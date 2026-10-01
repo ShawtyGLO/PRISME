@@ -7,6 +7,8 @@ import numpy as np
 from scipy.signal import lfilter, welch
 from prisme_tame import tame_band
 sys.stdout.reconfigure(encoding="utf-8")
+DET = os.environ.get("DET", "v4")
+print("détection :", DET)
 fs = 48000
 rng = np.random.default_rng(2)
 
@@ -30,9 +32,11 @@ for N in (1, 2, 4, 8):
     x = base.copy()
     for f in fr:
         x += 0.05 * 10 ** (12 / 20) * 0.05 * np.sin(2 * np.pi * f * t + rng.uniform(0, 6))
-    y = tame_band(x, fs, shape="bell", f0=800.0, q=0.5, gain_db=-9.0, width=0.5)
+    y, dg = tame_band(x, fs, shape="bell", f0=800.0, q=0.5, gain_db=-9.0, width=0.5, detection=DET, diag=True)
     red = [niveau(y[fs:], f) - niveau(x[fs:], f) for f in fr]
-    print(f"  N = {N} : réduction moyenne {np.mean(red):+.1f} dB (min {max(red):+.1f})")
+    R = dg["red_full"][:, fs:].mean(axis=1)
+    det = [-float(R[np.argmin(np.abs(dg["f"] - f))]) / max(float(dg["w"][np.argmin(np.abs(dg["f"] - f))]), 1e-3) for f in fr]
+    print(f"  N = {N} : effet mesuré moyen {np.mean(red):+.1f} dB (min {max(red):+.1f}) ; détection rapportée au poids de zone : moyenne {np.mean(det):+.1f}, min {max(det):+.1f}")
 
 print("\nB) résonance fixe 80 Hz (+12 dB) + basse qui change de note toutes les 0,5 s ; Tame shelf grave 150 Hz −9 dB")
 notes = [55.0, 73.4, 61.7, 82.4, 49.0, 65.4, 98.0, 55.0, 73.4, 61.7, 82.4, 49.0]
@@ -42,7 +46,7 @@ for k, f in enumerate(notes):
     tt = np.arange(j - i) / fs
     x[i:j] += 0.3 * np.sin(2 * np.pi * f * tt) * np.exp(-tt / 0.4)
 x += 0.02 * 10 ** (12 / 20) * 0.1 * np.sin(2 * np.pi * 80.0 * t)
-y, d = tame_band(x, fs, shape="lowshelf", f0=150.0, q=0.71, gain_db=-9.0, width=0.5, diag=True)
+y, d = tame_band(x, fs, shape="lowshelf", f0=150.0, q=0.71, gain_db=-9.0, width=0.5, diag=True, detection=DET)
 k80 = np.argmin(np.abs(d["f"] - 80.0))
 r = -d["red_full"][k80][fs:]
 w = int(0.25 * fs)

@@ -20,13 +20,18 @@ PRISME — type de bande « Tame » v3 (moteur temporel en FLUX, 2026-09-25) : b
 import os
 import numpy as np
 from scipy.signal import lfilter, freqz
-from scipy.ndimage import uniform_filter1d, maximum_filter1d, convolve1d
+from scipy.ndimage import uniform_filter1d, maximum_filter1d, convolve1d, percentile_filter
 from prisme_dsp import rbj_bandpass0db
 from prisme_band import zone_filter
 
 RA0, QA0, QS0, JK0 = 24, 14.0, 20.0, 18      # référence v3 : 24 bandes/octave, Q 14 (analyse) / 20 (synthèse), noyau ±18 bandes
 RA_DEFAULT = int(os.environ.get('TAME_RA', '24'))
 INTERP_DEFAULT = os.environ.get('TAME_INTERP', '1') == '1'
+DET_DEFAULT = os.environ.get('TAME_DET', 'v4')
+# Détection v4 (2026-10-01) : référence ROBUSTE au lieu de la moyenne des voisines (qui montait quand beaucoup de bandes étaient hautes : 8 résonances → −1,9 dB au lieu de −9 ;
+# grave instable selon la note). Spectre « blanchi » par une pente rose (+3 dB/oct), référence = percentile bas sur ±V octaves, plus une mémoire lente (τ 3 s)
+# qui garde constante la détection d'une résonance permanente. Largeur découplée : elle ne règle plus que la finesse de l'encoche.
+V4_PCT, V4_OCT, V4_TAU, V4_TILT = 15.0, 2.0, 3.0, 0.0      # percentile bas sur ±1 octave : 8 résonances denses toutes détectées (balayage 2026-10-01)
 DEC = 16         # la détection (niveaux, excès, lissage) tourne à fs/16 : les niveaux de bande varient lentement (τ ≥ 4 ms)
 
 
@@ -47,7 +52,7 @@ def _grille(shape, f0, q, fs, ctx, RA=24):
 
 
 class Tame:
-    def __init__(self, fs, shape="bell", f0=3000.0, q=0.7, gain_db=-9.0, width=0.5, thresh_db=4.5, ratio=None, ctx=1.0, ra=None, interp=None):
+    def __init__(self, fs, shape="bell", f0=3000.0, q=0.7, gain_db=-9.0, width=0.5, thresh_db=4.5, ratio=None, ctx=1.0, ra=None, interp=None, detection=None):
         RA = self.RA = RA_DEFAULT if ra is None else ra
         self.interp = INTERP_DEFAULT if interp is None else interp
         QA, QS, JK = self.QA, self.QS, self.JK = QA0 * RA / RA0, QS0 * RA / RA0, max(2, int(round(JK0 * RA / RA0)))
@@ -58,8 +63,13 @@ class Tame:
         self.w = np.abs(freqz(b, a, worN=2 * np.pi * f / fs)[1])
         self.act = np.where(self.w >= 0.02)[0]
         self.ratio = float(np.clip(self.depth / 4.5, 1.0, 3.0)) if ratio is None else ratio
-        self.seuil = thresh_db - 1.0 * (1.0 - width)
-        p = 0.08 + 0.42 * (1.0 - width) ** 1.5                       # demi-largeur du plateau (octaves)
+        self.det = DET_DEFAULT if detection is None else detection
+        if self.det == "v4":
+            self.seuil = thresh_db                                       # v4 : la largeur ne touche plus au seuil
+            p = 0.04 + 0.66 * (1.0 - width) ** 1.5                       # demi-largeur 0,04 … 0,70 oct (≈ 1/12 oct … 1,4 oct au total)
+        else:
+            self.seuil = thresh_db - 1.0 * (1.0 - width)
+            p = 0.08 + 0.42 * (1.0 - width) ** 1.5                       # demi-largeur du plateau (octaves)
         self.n_p = int(round(RA * p))
         sm = 0.0 if width >= 0.999 else 0.6 * p
         self.size_sm = max(3, 2 * int(round(RA * sm)) + 1)
@@ -77,6 +87,12 @@ class Tame:
         self.zef, self.zes = np.zeros((N, 1)), np.zeros((N, 1))
         self.c_att, self.c_rel = np.exp(-DEC / (0.004 * fs)), np.exp(-DEC / (0.08 * fs))        # à cadence décimée
         self.zra, self.zrr = np.zeros((N, 1)), np.zeros((N, 1))
+        self.lg = np.log2(f / 1000.0)                                    # abscisse en octaves (retrait de la pente globale)
+        self.size_v4 = 2 * int(round(RA * V4_OCT)) + 1
+        self.c_lt = np.exp(-DEC / (V4_TAU * fs))
+        self.z_lt = None
+        self.v_lt, self.n_lt = None, 0
+        self.marge_v4 = 1.5 + 30.0 * (1.0 - width) ** 2
         self.count = 0
         self.last_red, self.last_S = np.zeros(N), np.ones(N)
         self.c_fin = np.exp(-1.0 / (0.0006 * fs))                                                # lissage plein débit des seules bandes actives
@@ -106,11 +122,35 @@ class Tame:
             L = (20.0 * np.log10(np.maximum(es_s, 0.5 * ef_s) * (np.pi / 2) + 1e-12)).astype(np.float32)
             Lp = maximum_filter1d(L, size=3, axis=0, mode="nearest")
             Ls = uniform_filter1d(Lp, size=self.size_sm, axis=0, mode="nearest")
-            mo = uniform_filter1d(Ls, size=self.size_o, axis=0, mode="nearest")
-            mi = uniform_filter1d(Ls, size=self.size_i, axis=0, mode="nearest")
-            ref = (mo * self.size_o - mi * self.size_i) / (self.size_o - self.size_i)
-            e = Ls - ref - self.seuil
+            if self.det == "v4":
+                # Courbe de référence « capturée en continu » (esprit Curves Equator / Soothe) : le spectre LONG TERME (τ 3 s) de la zone, dont on prend
+                # un percentile bas sur ±1 octave après avoir retiré sa pente globale (bruit blanc, rose ou musique plus sombre : tous neutres).
+                # Excès = spectre instantané − cette courbe : une résonance permanente reste au-dessus de façon constante, et la courbe ne monte pas
+                # quand plusieurs résonances sont présentes (percentile bas) ; une résonance qui s'arrête cesse aussitôt d'être traitée.
+                Lt = Ls.astype(np.float64)
+                lt = np.empty_like(Lt)
+                for j in range(Lt.shape[1]):                                                   # moyenne glissante : démarrage « cumulatif » puis τ 3 s
+                    self.n_lt += 1
+                    c = max(1.0 - 1.0 / self.n_lt, 0.0) if self.n_lt * DEC / self.fs < V4_TAU else self.c_lt
+                    self.v_lt = Lt[:, j] if self.v_lt is None else c * self.v_lt + (1.0 - c) * Lt[:, j]
+                    lt[:, j] = self.v_lt
+                X = self.lg - self.lg.mean()
+                pente = (X @ (lt - lt.mean(axis=0, keepdims=True))) / (X @ X)                 # pente globale par trame (dB/oct)
+                tend = np.outer(X, pente)
+                courbe = percentile_filter(lt - tend, V4_PCT, size=(self.size_v4, 1), mode="nearest") + tend
+                decal = np.median(Lt - lt, axis=0, keepdims=True)                              # variation de niveau d'ENSEMBLE (médiane : les pics n'y comptent pas)
+                e = (Lt - (courbe + decal)).astype(np.float32) - self.seuil
+            else:
+                mo = uniform_filter1d(Ls, size=self.size_o, axis=0, mode="nearest")
+                mi = uniform_filter1d(Ls, size=self.size_i, axis=0, mode="nearest")
+                ref = (mo * self.size_o - mi * self.size_i) / (self.size_o - self.size_i)
+                e = Ls - ref - self.seuil
             ep = np.where(e >= 1.0, e, np.where(e <= -1.0, 0.0, 0.25 * (e + 1.0) ** 2))          # genou quadratique
+            if self.det == "v4":
+                # Finesse : on ne garde que le cœur des excès, à moins de `marge` dB du sommet local. Largeur fine → marge 1,5 dB (les flancs d'une résonance
+                # étroite ne sont pas traités : encoche très fine) ; largeur large → marge ≈ 30 dB (toute la bosse est traitée, zone ample).
+                cime = maximum_filter1d(ep, size=2 * self.n_p + 3, axis=0, mode="nearest")
+                ep = np.where(ep >= cime - self.marge_v4, ep, 0.0).astype(np.float32)
             gate = np.clip((Lp + 95.0) / 10.0, 0.0, 1.0)                                          # rien sous −95 dBFS
             red = np.minimum(self.ratio * ep * gate, self.depth)
             red = maximum_filter1d(red, size=2 * self.n_p + 1, axis=0, mode="nearest")            # plateau
@@ -229,11 +269,11 @@ def tame_stereo(x, fs, block=8192, **kw):
 
 
 def tame_band(x, fs, shape="bell", f0=3000.0, q=0.7, gain_db=-9.0, width=0.5, thresh_db=4.5, ratio=None, ctx=1.0,
-              block=8192, diag=False, ra=None, interp=None):
+              block=8192, diag=False, ra=None, interp=None, detection=None):
     """Tame bipolaire. gain_db < 0 : supprime les résonances ; > 0 : les réhausse. width : 0 large … 1 fin."""
     if gain_db == 0.0:
         return x.copy()
-    t = Tame(fs, shape, f0, q, gain_db, width, thresh_db, ratio, ctx, ra, interp)
+    t = Tame(fs, shape, f0, q, gain_db, width, thresh_db, ratio, ctx, ra, interp, detection)
     y = np.empty(len(x))
     reds = []
     for i in range(0, len(x), block):
