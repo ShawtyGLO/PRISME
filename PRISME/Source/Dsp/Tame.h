@@ -42,8 +42,10 @@ public:
         act.clear();
         for (int k = 0; k < N; ++k) if (w[(size_t) k] >= 0.02) act.push_back (k);
         ratio = (float) std::clamp (depth / 4.5, 1.0, 3.0);
-        seuil = (float) (threshDb - 1.0 * (1.0 - width));
-        const double p = 0.08 + 0.42 * std::pow (1.0 - width, 1.5);
+        // v4 : la Largeur ne touche plus au seuil ; finesse 1/12 a 1,4 oct ; marge de coeur 1,5 dB (fin) a ~30 dB (large)
+        seuil = (float) threshDb;
+        const double p = 0.04 + 0.66 * std::pow (1.0 - width, 1.5);
+        marge = (float) (1.5 + 30.0 * (1.0 - width) * (1.0 - width));
         nP = (int) std::nearbyint (RA * p);
         const double sm = width >= 0.999 ? 0.0 : 0.6 * p;
         sizeSm = std::max (3, 2 * (int) std::nearbyint (RA * sm) + 1);
@@ -85,6 +87,17 @@ public:
         for (auto* v : { &Lf, &Lp, &Ls, &mo, &mi, &refv, &epv, &redf, &redm, &redu, &tmpf }) v->assign ((size_t) N, 0.0f);
         for (auto* v : { &redD, &SD, &lastRed, &lastS, &ef, &es, &zra, &zrr }) v->assign ((size_t) N, 0.0);
         line.assign ((size_t) N + 400, 0.0);
+        lgc.assign ((size_t) N, 0.0);                             // v4 : abscisse en octaves, centree
+        double mlg = 0.0;
+        for (int k = 0; k < N; ++k) { lgc[(size_t) k] = std::log2 (f[(size_t) k] / 1000.0); mlg += lgc[(size_t) k]; }
+        mlg /= (double) N;
+        xx = 0.0;
+        for (auto& v : lgc) { v -= mlg; xx += v * v; }
+        sizeV4 = 2 * (int) std::nearbyint (RA * 2.0) + 1;          // fenetre de la courbe : +-1 octave
+        for (auto* v : { &lt, &Ltd, &detr, &courbe, &courbeC, &diffv }) v->assign ((size_t) N, 0.0);
+        aCs = std::exp (-(double) DEC / (0.02 * fs));
+        tri.assign ((size_t) std::max (sizeV4, N), 0.0);
+        cLt = std::exp (-(double) DEC / (3.0 * fs));
         reset();
     }
 
@@ -104,6 +117,7 @@ public:
         std::fill (cPrev.begin(), cPrev.end(), 0.0);
         std::fill (cCur.begin(), cCur.end(), 0.0);
         count = 0;
+        nLt = 0;
     }
 
     inline bool isPoint() const { return (count % DEC) == 0; }
@@ -266,19 +280,55 @@ public:
             Lf[(size_t) k] = (float) (20.0 * std::log10 (std::max (es[(size_t) k], 0.5 * ef[(size_t) k]) * (kPi / 2.0) + 1e-12));
         maxFilter (Lf, Lp, 3);
         uniformFilter (Lp, Ls, sizeSm);
-        uniformFilter (Ls, mo, sizeO);
-        uniformFilter (Ls, mi, sizeI);
-        const float fo = (float) sizeO, fi = (float) sizeI, fd = (float) (sizeO - sizeI);
+        // v4 : courbe de reference = spectre long terme, pente retiree, percentile bas 15 % sur +-1 oct ; plus le decalage de niveau d'ensemble
+        ++nLt;
+        const double c = ((double) nLt * DEC / fs < 3.0) ? std::max (1.0 - 1.0 / (double) nLt, 0.0) : cLt;
+        double mlt = 0.0;
         for (int k = 0; k < N; ++k)
         {
             const size_t i = (size_t) k;
-            const float a = mo[i] * fo, b = mi[i] * fi, num = a - b;
-            refv[i] = num / fd;
-            const float e = (Ls[i] - refv[i]) - seuil;
+            Ltd[i] = (double) Ls[i];
+            lt[i] = nLt == 1 ? Ltd[i] : c * lt[i] + (1.0 - c) * Ltd[i];
+            mlt += lt[i];
+        }
+        mlt /= (double) N;
+        double num = 0.0;
+        for (int k = 0; k < N; ++k) num += lgc[(size_t) k] * (lt[(size_t) k] - mlt);
+        const double pente = num / xx;
+        for (int k = 0; k < N; ++k) detr[(size_t) k] = lt[(size_t) k] - lgc[(size_t) k] * pente;
+        const int h = sizeV4 / 2, rang = (int) ((double) sizeV4 * 15.0 / 100.0);
+        const bool recalc = ((nLt - 1) % 32) == 0;                 // courbe recalculée toutes les 32 trames décimées (≈ 10 ms), tenue entre deux : elle suit un spectre à τ 3 s
+        for (int k = 0; k < N; ++k)
+        {
+            if (recalc)
+            {
+                for (int d = -h; d <= h; ++d) tri[(size_t) (d + h)] = detr[(size_t) std::clamp (k + d, 0, N - 1)];
+                std::nth_element (tri.begin(), tri.begin() + rang, tri.begin() + sizeV4);
+                courbeC[(size_t) k] = tri[(size_t) rang] + lgc[(size_t) k] * pente;
+            }
+            courbe[(size_t) k] = nLt == 1 ? courbeC[(size_t) k] : aCs * courbe[(size_t) k] + (1.0 - aCs) * courbeC[(size_t) k];      // lissée (τ 20 ms)
+            diffv[(size_t) k] = Ltd[(size_t) k] - lt[(size_t) k];
+        }
+        std::copy (diffv.begin(), diffv.begin() + N, tri.begin());
+        const int mid = N / 2;
+        std::nth_element (tri.begin(), tri.begin() + mid, tri.begin() + N);
+        double decal = tri[(size_t) mid];
+        if (N % 2 == 0) decal = 0.5 * (decal + *std::max_element (tri.begin(), tri.begin() + mid));
+        for (int k = 0; k < N; ++k)
+        {
+            const size_t i = (size_t) k;
+            const float e = (float) (Ltd[i] - (courbe[i] + decal)) - seuil;
             float ep;
             if (e >= 1.0f) ep = e;
             else if (e <= -1.0f) ep = 0.0f;
             else { const float u = e + 1.0f; ep = 0.25f * (u * u); }
+            epv[i] = ep;
+        }
+        maxFilter (epv, refv, 2 * nP + 3);                       // cime locale : on ne garde que le coeur des exces
+        for (int k = 0; k < N; ++k)
+        {
+            const size_t i = (size_t) k;
+            const float ep = epv[i] >= refv[i] - marge ? epv[i] : 0.0f;
             const float gate = std::clamp ((Lp[i] + 95.0f) / 10.0f, 0.0f, 1.0f);
             const float r = (ratio * ep) * gate;
             redf[i] = std::min (r, (float) depth);
@@ -318,7 +368,11 @@ public:
 private:
 
     double fs = 48000, sign = -1, depth = 9, cAtt = 0, cRel = 0;
-    float ratio = 1, seuil = 4.5f;
+    float ratio = 1, seuil = 4.5f, marge = 1.5f;
+    int sizeV4 = 97, nLt = 0;
+    double xx = 1.0, cLt = 0.0;
+    std::vector<double> lgc, lt, Ltd, detr, courbe, courbeC, diffv, tri;
+    double aCs = 0.0;
     int N = 0, nP = 0, sizeSm = 3, sizeO = 3, sizeI = 3, sizeS = 3;
     long count = 0;
     std::vector<double> f, w, K, cf, cse, ef, es, zra, zrr, redD, SD, lastRed, lastS, cPrev, cCur, line;

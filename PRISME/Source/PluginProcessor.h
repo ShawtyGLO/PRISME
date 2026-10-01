@@ -95,7 +95,7 @@ private:
     bool readRing (std::int64_t from, int count, double* L, double* R) const;
 
     static constexpr int fadeLen = 1024;
-    static constexpr double histSeconds = 2.5;                  // l'Exciter v2 a un niveau lent de 400 ms : 2,5 s = 6 constantes de temps
+    static constexpr double histSeconds = 6.0;                  // préchauffage : le Tame v4 a une mémoire de 3 s (courbe de référence) ; 6 s pour une marge confortable
 
     std::array<Slot, prismeParams::nBands> slots;
     std::atomic<double> fsHz { 0.0 };

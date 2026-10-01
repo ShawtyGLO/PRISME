@@ -31,6 +31,7 @@ DET_DEFAULT = os.environ.get('TAME_DET', 'v4')
 # Détection v4 (2026-10-01) : référence ROBUSTE au lieu de la moyenne des voisines (qui montait quand beaucoup de bandes étaient hautes : 8 résonances → −1,9 dB au lieu de −9 ;
 # grave instable selon la note). Spectre « blanchi » par une pente rose (+3 dB/oct), référence = percentile bas sur ±V octaves, plus une mémoire lente (τ 3 s)
 # qui garde constante la détection d'une résonance permanente. Largeur découplée : elle ne règle plus que la finesse de l'encoche.
+V4_PAS = 32                                      # recalcul de la courbe toutes les 32 trames décimées (512 échantillons) : coût ÷ 32
 V4_PCT, V4_OCT, V4_TAU, V4_TILT = 15.0, 2.0, 3.0, 0.0      # percentile bas sur ±1 octave : 8 résonances denses toutes détectées (balayage 2026-10-01)
 DEC = 16         # la détection (niveaux, excès, lissage) tourne à fs/16 : les niveaux de bande varient lentement (τ ≥ 4 ms)
 
@@ -92,6 +93,8 @@ class Tame:
         self.c_lt = np.exp(-DEC / (V4_TAU * fs))
         self.z_lt = None
         self.v_lt, self.n_lt = None, 0
+        self.courbe_c, self.n_lt_c, self.courbe_s = None, 0, None
+        self.a_cs = np.exp(-DEC / (0.02 * fs))
         self.marge_v4 = 1.5 + 30.0 * (1.0 - width) ** 2
         self.count = 0
         self.last_red, self.last_S = np.zeros(N), np.ones(N)
@@ -137,7 +140,14 @@ class Tame:
                 X = self.lg - self.lg.mean()
                 pente = (X @ (lt - lt.mean(axis=0, keepdims=True))) / (X @ X)                 # pente globale par trame (dB/oct)
                 tend = np.outer(X, pente)
-                courbe = percentile_filter(lt - tend, V4_PCT, size=(self.size_v4, 1), mode="nearest") + tend
+                # la courbe suit le spectre LONG TERME (τ 3 s) : elle n'est recalculée que toutes les V4_PAS trames décimées (≈ 10 ms) et tenue entre deux
+                courbe = np.empty_like(lt)
+                for j in range(lt.shape[1]):
+                    if self.n_lt_c % V4_PAS == 0 or self.courbe_c is None:
+                        self.courbe_c = percentile_filter(lt[:, j] - tend[:, j], V4_PCT, size=self.size_v4, mode="nearest") + tend[:, j]
+                    self.n_lt_c += 1
+                    self.courbe_s = self.courbe_c.copy() if self.courbe_s is None else self.a_cs * self.courbe_s + (1.0 - self.a_cs) * self.courbe_c   # lissée (τ 20 ms) : pas de marche
+                    courbe[:, j] = self.courbe_s
                 decal = np.median(Lt - lt, axis=0, keepdims=True)                              # variation de niveau d'ENSEMBLE (médiane : les pics n'y comptent pas)
                 e = (Lt - (courbe + decal)).astype(np.float32) - self.seuil
             else:

@@ -228,7 +228,7 @@ int main (int argc, char** argv)
         {
             const size_t n = m.size() / 2;
             const double fs = 48000.0;
-            const size_t t0 = (size_t) (6.0 * fs), hist = (size_t) (2.5 * fs);
+            const size_t t0 = (size_t) (8.0 * fs), hist = (size_t) (6.0 * fs);
             struct Cfg { TypeBande t; Forme f; double f0, q, g; ProfilExc mo; const char* nom; };
             const Cfg cfgs[] = { { TypeBande::Exciter, Forme::Cloche, 3000, 0.71, 2, ProfilExc::MordantChaud, "Exciter cloche 3 k +2" },
                                  { TypeBande::Exciter, Forme::ShelfGrave, 42, 0.71, 3, ProfilExc::MordantChaud, "Exciter shelf grave 42 +3" },
