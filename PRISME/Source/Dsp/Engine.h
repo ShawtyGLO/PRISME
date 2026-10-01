@@ -1,7 +1,8 @@
 // PRISME — assemblage des 5 bandes en flux (port de _proto/prisme_engine_stream.py).
 //   sortie = entrée retardée + Σ deltas des bandes (parallèle : l'ordre n'a pas d'importance) ; modes de canal Stéréo / Mid / Side / L / R.
-// LATENCE FIXE de 20 échantillons (Exciter::latence) : le sec ET les deltas du Tame / Shape / Lift (latence propre nulle) sont retardés d'autant,
-// avec ou sans Exciter actif (les hôtes n'aiment pas une latence qui change). À déclarer avec setLatencySamples (20).
+// LATENCE FIXE de 192 échantillons (Shape::lookahead, 4,0 ms à 48 kHz) : le Shape v5 ANTICIPE (le poids calculé à l'instant n s'applique à b(n − 192)).
+// Le sec ET les deltas du Tame / Lift (latence propre nulle) sont retardés de 192 ; l'Exciter porte sa propre latence de 20 (FIR) et reçoit 172 de plus ;
+// le Shape porte déjà les 192. Constante, avec ou sans Exciter / Shape actifs (les hôtes n'aiment pas une latence qui change). À déclarer avec setLatencySamples (192).
 // `BandeProc` = UNE bande (ses instances par canal + ses retards) : le plugin les remplace une à une avec un fondu quand un réglage change.
 // Aucune dépendance JUCE. prepare() alloue ; process() n'alloue pas.
 #pragma once
@@ -69,6 +70,7 @@ public:
         {
             const size_t k = (size_t) i;
             retard[k].init (0.0);
+            retardExc[k].init (0.0);
             switch (s.type)
             {
                 case TypeBande::Exciter: exc[k] = std::make_unique<ExciterV3>(); exc[k]->prepare (fs, s.forme, s.f0, s.q, s.gainDb, s.profil, s.drive, s.tilt, s.dens); break;      // dens porte la Pureté (Exciter v3)
@@ -182,8 +184,8 @@ private:
             }
             default: break;
         }
-        dL = retard[0].push (yL - L);
-        dR = retard[1].push (yR - R);
+        if (spec.type == TypeBande::Shape) { dL = yL - L; dR = yR - R; }               // le Shape est déjà aligné (b retardé de la latence)
+        else { dL = retard[0].push (yL - L); dR = retard[1].push (yR - R); }
     }
 
     inline double delta (int i, double z)
@@ -191,9 +193,9 @@ private:
         const size_t k = (size_t) i;
         switch (spec.type)
         {
-            case TypeBande::Exciter: return exc[k]->process (z);                                   // porte déjà la latence
+            case TypeBande::Exciter: return retardExc[k].push (exc[k]->process (z));               // aligné sur 20 → complété jusqu'à la latence
             case TypeBande::Tame:    return retard[k].push (tame[k]->process (z) - z);            // latence propre nulle : on retarde le delta
-            case TypeBande::Shape:   return retard[k].push (shape[k]->process (z) - z);
+            case TypeBande::Shape:   return shape[k]->process (z) - z;                               // déjà aligné
             case TypeBande::Lift:    return retard[k].push (lift[k]->process (z) - z);
         }
         return 0.0;
@@ -205,13 +207,15 @@ private:
     std::array<std::unique_ptr<Tame>, 2> tame;
     std::array<std::unique_ptr<Shape>, 2> shape;
     std::array<std::unique_ptr<Lift>, 2> lift;
-    std::array<Retard<Exciter::latence>, 2> retard;
+    std::array<Retard<Shape::lookahead>, 2> retard;                       // Tame / Lift
+    std::array<Retard<Shape::lookahead - Exciter::latence>, 2> retardExc;  // Exciter
 };
 
 class Engine
 {
 public:
-    static constexpr int latence = Exciter::latence;
+    static constexpr int latence = Shape::lookahead;
+    static_assert (latence >= Exciter::latence, "la latence de l'assemblage doit couvrir celle de l'Exciter");
 
     void prepare (double fs_, const std::vector<BandeSpec>& specs)
     {
@@ -260,7 +264,7 @@ public:
 
 private:
     double fs = 48000;
-    Retard<Exciter::latence> secL, secR;
+    Retard<latence> secL, secR;
     std::vector<std::pair<int, std::unique_ptr<BandeProc>>> bandes;       // (emplacement, bande)
     FiltresBandes filt;
 };

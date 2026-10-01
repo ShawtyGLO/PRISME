@@ -4,6 +4,7 @@ Fichiers : <nom>.in.f64 / <nom>.out.f64 (float64 brut, mono) + manifest.txt (une
   lift  <nom> <fs> <forme> <f0> <q> <gain_db> <amount> <release_ms>
   shape <nom> <fs> <forme> <f0> <q> <gain_db> <cible> <time_ms(0=défaut)> <sens>
   exciter <nom> <fs> <forme> <f0> <q> <gain_db> <mode> <source>   (sortie = delta aligné sur l'entrée retardée de 20)
+  shape : sortie brute de Shape5 = x + (g−1)·b(n−192)  (voir prisme_shape5.py)
   zone  <nom> <fs> <forme> <f0> <q> <b0> <b1> <b2> <a1> <a2>
 Lancer :  python _proto/export_refs.py
 """
@@ -16,7 +17,7 @@ from render import load
 from bench_leak import SRC
 from prisme_band import zone_filter
 from prisme_lift import lift_band
-from prisme_shape import shape_band
+from prisme_shape5 import Shape5
 from prisme_exciter_stream import exciter_stream, H0, H_UP
 from prisme_tame import tame_band
 from prisme_exciter_v2_stream import exciter_v2_stream
@@ -61,7 +62,8 @@ SCFG = [("transitoires", "bell", 60.0, 1.0, 6.0, 0.0, 0.85), ("sustain", "bell",
 for fs, nom_sig, sig in ((int(fs0), "mus", mus), (44100, "syn44", synth(44100)), (96000, "syn96", synth(96000))):
     for i, (cb, sh, f0, q, g, tm, sens) in enumerate(SCFG):
         nom = f"shape_{nom_sig}_{i}"
-        y = shape_band(sig, fs, cb, sh, f0, q, g, block=8192, time_ms=(tm or None), sens=sens)
+        s5 = Shape5(fs, cb, sh, f0, q, g, None, (tm or None), sens)                       # sortie brute : x + (g−1)·b retardé de la latence
+        y = np.concatenate([s5.process(sig[k:k + 8192]) for k in range(0, len(sig), 8192)])
         dump(nom, sig, y)
         man.append(f"shape {nom} {fs} {sh} {f0} {q} {g} {cb} {tm} {sens}")
 # tables de coefficients (FIR du suréchantillonnage) : les MÊMES nombres que le prototype

@@ -2,7 +2,7 @@
 
   F01 équivalence     le flux (retardé de la latence) reproduit l'assemblage hors ligne `prisme_engine.process` : écart relatif < 1e-9
   F02 blocs           résultat identique pour des blocs de 64, 500, 4096, entier : < 1e-9
-  F03 latence         toutes les bandes à 0 dB → sortie = entrée retardée de 20 échantillons, EXACTEMENT ; latence constante (avec ou sans Exciter)
+  F03 latence         toutes les bandes à 0 dB → sortie = entrée retardée de 192 échantillons, EXACTEMENT ; latence constante (avec ou sans Exciter)
   F04 canaux          en flux aussi : Side ne touche pas le Mid, Mid ne touche pas le Side, Left ne touche pas R, Right ne touche pas L (< 1e-12 : la sortie moins l'entrée retardée laisse un arrondi)
   F05 mono            L = R en entrée, mode Stéréo → L = R en sortie
   F06 coût            facteur temps réel de la configuration type (information)
@@ -30,17 +30,19 @@ if __name__ == "__main__":
     x = x[int(30 * fs): int(35 * fs)]
     n, D = len(x), LATENCE
     b = config()
-    t0 = time.time(); flux = traite(x, fs, b); dt = time.time() - t0
-    hors = process(x, fs, b)
+    b_ns = [s for s in b if s["type"] != "shape"]               # le Shape v5 (anticipation) n'a pas d'équivalent hors ligne : équivalence vérifiée sur les autres bandes
+    t0 = time.time(); flux_tout = traite(x, fs, b); dt = time.time() - t0
+    flux = traite(x, fs, b_ns)
+    hors = process(x, fs, b_ns)
     e = np.max(np.abs(flux[D:] - hors[:n - D])) / np.max(np.abs(hors))
-    check("F01", "équivalence avec l'assemblage hors ligne (config type, 5 bandes)", f"écart relatif max {e:.1e}", e < 1e-9)
-    ecarts = {bl: np.max(np.abs(traite(x, fs, b, block=bl) - flux)) for bl in (64, 500, 4096)}
+    check("F01", "équivalence avec l'assemblage hors ligne (config type sans Shape : 3 bandes)", f"écart relatif max {e:.1e}", e < 1e-9)
+    ecarts = {bl: np.max(np.abs(traite(x, fs, b, block=bl) - flux_tout)) for bl in (64, 500, 4096)}
     check("F02", "indépendance à la taille des blocs (64, 500, 4096)", " ".join(f"{k}:{v:.0e}" for k, v in ecarts.items()), max(ecarts.values()) < 1e-9)
     zero = [dict(s, gain_db=0.0) for s in b]
     y0 = traite(x, fs, zero)
     sans_exc = [dict(s) for s in b if s["type"] != "exciter"]
     ok3 = np.array_equal(y0[D:], x[:n - D]) and np.all(y0[:D] == 0) and EngineStream(fs, b).latence == EngineStream(fs, sans_exc).latence == D
-    check("F03", "gains à 0 dB : sortie = entrée retardée de 20 échantillons, exactement", f"latence {D} échantillons ({D / fs * 1000:.2f} ms), constante", ok3)
+    check("F03", "gains à 0 dB : sortie = entrée retardée de la latence, exactement", f"latence {D} échantillons ({D / fs * 1000:.2f} ms), constante", ok3)
     ok4, det = True, []
     for canal in ("side", "mid", "left", "right"):
         for typ in ("tame", "exciter"):
@@ -53,7 +55,7 @@ if __name__ == "__main__":
     mono = np.stack([x[:, 0], x[:, 0]], axis=1)
     ym = traite(mono, fs, [dict(s, canal="stereo") for s in b])
     check("F05", "mono : L = R en entrée → L = R en sortie (mode Stéréo)", f"écart {np.max(np.abs(ym[:, 0] - ym[:, 1])):.1e}", np.max(np.abs(ym[:, 0] - ym[:, 1])) < 1e-9)
-    bl = b + [dict(type="lift", shape="bell", f0=2000.0, q=0.7, gain_db=9.0, canal="stereo", amount=70.0)]
+    bl = b_ns + [dict(type="lift", shape="bell", f0=2000.0, q=0.7, gain_db=9.0, canal="stereo", amount=70.0)]
     fl = traite(x, fs, bl); hl = process(x, fs, bl)
     e7 = np.max(np.abs(fl[D:] - hl[:n - D])) / np.max(np.abs(hl))
     check("F07", "avec une bande Lift : équivalence flux / hors ligne, blocs, mono", f"écart {e7:.1e}", e7 < 1e-9 and np.max(np.abs(traite(x, fs, bl, block=500) - fl)) < 1e-9)

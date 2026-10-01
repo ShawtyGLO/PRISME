@@ -67,7 +67,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "source"), 1 }, n + "source", sourceNames(), 0));
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "width"), 1 }, n + "largeur", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "cible"), 1 }, n + "cible", cibleNames(), 0));
-        layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "time"), 1 }, n + U8 ("durée"), juce::NormalisableRange<float> (5.0f, 200.0f, 1.0f), 60.0f));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "time"), 1 }, n + U8 ("durée"), juce::NormalisableRange<float> (5.0f, 200.0f, 1.0f), 30.0f));
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "sens"), 1 }, n + U8 ("sensibilité"), juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.85f));
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "amount"), 1 }, n + "amount", juce::NormalisableRange<float> (0.0f, 100.0f, 0.5f), 60.0f));
         juce::NormalisableRange<float> rr (20.0f, 1000.0f, 1.0f);

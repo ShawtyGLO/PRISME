@@ -6,7 +6,7 @@
 /**
     PRISME — EQ dont chaque bande est un TYPE de traitement (Exciter, Tame, Shape, Lift), posée n'importe où sur le spectre.
 
-    Architecture additive : sortie = entrée retardée + Σ deltas des bandes. Latence FIXE de 20 échantillons (déclarée à l'hôte).
+    Architecture additive : sortie = entrée retardée + Σ deltas des bandes. Latence FIXE de 192 échantillons (déclarée à l'hôte).
 
     CHANGEMENT DE RÉGLAGE EN COURS DE LECTURE
       · GAIN : appliqué en direct à la bande vivante (aucune reconstruction, aucun état perdu) ;

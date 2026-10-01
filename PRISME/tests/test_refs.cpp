@@ -276,6 +276,15 @@ int main (int argc, char** argv)
         std::cout << "coût Lift : " << dt / 60.0 * 100.0 << " % d'un cœur par bande mono (" << acc * 0 << ")\n";
     }
     {
+        Shape sh; sh.prepare (48000, Shape::Cible::Transitoires, Forme::Cloche, 200, 0.7, 9, 0.0, 0.85);
+        std::vector<double> x (48000 * 30);
+        unsigned s = 5; for (double& v : x) { s = s * 1664525u + 1013904223u; v = ((s >> 8) / 8388608.0 - 1.0) * 0.1; }
+        const auto t0 = std::chrono::steady_clock::now();
+        double acc = 0; for (double v : x) acc += sh.process (v);
+        const double dt = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        std::cout << "coût Shape v5 : " << dt / 30.0 * 100.0 << " % d'un cœur par bande mono (" << acc * 0 << ")\n";
+    }
+    {
         Exciter ex; ex.prepare (48000, Forme::Cloche, 3000, 1.0, 5, ModeSat::Iron, SourceExc::Auto);
         std::vector<double> x (48000 * 30);
         unsigned s = 7; for (double& v : x) { s = s * 1664525u + 1013904223u; v = ((s >> 8) / 8388608.0 - 1.0) * 0.2; }
