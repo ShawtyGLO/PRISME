@@ -36,6 +36,19 @@ V4_PCT, V4_OCT, V4_TAU, V4_TILT = 15.0, 2.0, 3.0, 0.0      # percentile bas sur 
 DEC = 16         # la détection (niveaux, excès, lissage) tourne à fs/16 : les niveaux de bande varient lentement (τ ≥ 4 ms)
 
 
+def _zone(shape, f0, q, fs, ctx):
+    """Zone d'action de la bande (bornes en Hz) : cloche = bande passante ± ctx octave, shelf = de f0/2^ctx à 0,45·fs (aigu) ou de 25 Hz à f0·2^ctx (grave)."""
+    if shape == "bell":
+        sq3 = np.sqrt(3.0) / q
+        demi = np.log2((sq3 + np.sqrt(sq3 ** 2 + 4)) / 2)
+        lo, hi = f0 / 2 ** (demi + ctx), f0 * 2 ** (demi + ctx)
+    elif shape == "highshelf":
+        lo, hi = f0 / 2 ** ctx, 0.45 * fs
+    else:
+        lo, hi = 25.0, f0 * 2 ** ctx
+    return max(lo, 20.0), min(hi, 0.45 * fs)
+
+
 def _grille(shape, f0, q, fs, ctx, RA=24):
     if shape == "bell":
         sq3 = np.sqrt(3.0) / q
@@ -47,6 +60,20 @@ def _grille(shape, f0, q, fs, ctx, RA=24):
         lo, hi = 25.0, f0 * 2 ** ctx
     lo = max(lo, 20.0)
     hi = min(hi, 0.45 * fs)
+    # la courbe de référence (percentile sur ±2 oct) a besoin d'un contexte large : une zone fine (Q élevé) est élargie à 4 octaves d'analyse (2026-10-01 :
+    # avec 5 raies dans une zone de Q 8 la référence montait au niveau des raies et le Tame ne réagissait plus). Seule l'ANALYSE s'élargit ; la synthèse reste
+    # limitée aux bandes de poids de zone ≥ 0,02.
+    span = 4.0
+    if np.log2(hi / lo) < span:
+        ext = span - np.log2(hi / lo)
+        lo2, hi2 = max(lo / 2 ** (ext / 2), 20.0), min(hi * 2 ** (ext / 2), 0.45 * fs)
+        rest = span - np.log2(hi2 / lo2)
+        if rest > 0 and lo2 > 20.0:
+            lo2 = max(lo2 / 2 ** rest, 20.0)
+        rest = span - np.log2(hi2 / lo2)
+        if rest > 0 and hi2 < 0.45 * fs:
+            hi2 = min(hi2 * 2 ** rest, 0.45 * fs)
+        lo, hi = lo2, hi2
     n = max(int(np.ceil(np.log2(hi / lo) * RA)) + 1, 8)
     f = lo * 2 ** (np.arange(n) / RA)
     return f[f < 0.45 * fs]
@@ -62,6 +89,8 @@ class Tame:
         N = self.N = len(f)
         b, a = zone_filter(shape, fs, f0, q)
         self.w = np.abs(freqz(b, a, worN=2 * np.pi * f / fs)[1])
+        lo0, hi0 = _zone(shape, f0, q, fs, ctx)
+        self.w = np.where((f >= lo0 * 0.999) & (f <= hi0 * 1.001), self.w, 0.0)      # l'analyse s'élargit à 4 octaves (contexte de la référence), l'action reste dans la zone d'origine
         self.act = np.where(self.w >= 0.02)[0]
         self.ratio = float(np.clip(self.depth / 4.5, 1.0, 3.0)) if ratio is None else ratio
         self.det = DET_DEFAULT if detection is None else detection

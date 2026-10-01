@@ -39,20 +39,12 @@ public:
         const auto zc = zoneFilter (forme, fs, f0, q);
         w.assign ((size_t) N, 0.0);
         for (int k = 0; k < N; ++k) w[(size_t) k] = std::abs (response (zc, 2.0 * kPi * f[(size_t) k] / fs));
+        for (int k = 0; k < N; ++k)                                  // l'analyse s'elargit a 4 octaves (contexte de la reference) ; l'action reste dans la zone d'origine
+            if (f[(size_t) k] < zoneLo * 0.999 || f[(size_t) k] > zoneHi * 1.001) w[(size_t) k] = 0.0;
         act.clear();
         for (int k = 0; k < N; ++k) if (w[(size_t) k] >= 0.02) act.push_back (k);
         ratio = (float) std::clamp (depth / 4.5, 1.0, 3.0);
-        // v4 : la Largeur ne touche plus au seuil ; finesse 1/12 a 1,4 oct ; marge de coeur 1,5 dB (fin) a ~30 dB (large)
-        seuil = (float) threshDb;
-        const double p = 0.04 + 0.66 * std::pow (1.0 - width, 1.5);
-        marge = (float) (1.5 + 30.0 * (1.0 - width) * (1.0 - width));
-        nP = (int) std::nearbyint (RA * p);
-        const double sm = width >= 0.999 ? 0.0 : 0.6 * p;
-        sizeSm = std::max (3, 2 * (int) std::nearbyint (RA * sm) + 1);
-        sizeO = 2 * (int) std::nearbyint (RA * (0.5 + (1.0 - width))) + 1;
-        sizeI = 2 * (int) std::nearbyint (RA * (p + 0.05)) + 1;
-        sizeO = std::max (sizeO, sizeI + 2);
-        sizeS = std::max (3, 2 * (nP / 2) + 1);
+        setWidth (width);
         // filtres d'analyse (toutes les bandes) et de synthèse (bandes actives)
         for (auto* v : { &aB0, &aB1, &aB2, &aA1, &aA2, &aZ1, &aZ2, &aOmCf, &aOmCs }) v->assign ((size_t) N, 0.0);
         for (int k = 0; k < N; ++k)
@@ -99,6 +91,22 @@ public:
         tri.assign ((size_t) std::max (sizeV4, N), 0.0);
         cLt = std::exp (-(double) DEC / (3.0 * fs));
         reset();
+    }
+
+    // Largeur (0 large … 1 fin) en direct : ne touche qu'aux tailles de filtres de la détection, aucun état (aucune reconstruction de la bande).
+    void setWidth (double width)
+    {
+        // v4 : la Largeur ne touche plus au seuil ; finesse 1/12 a 1,4 oct ; marge de coeur 1,5 dB (fin) a ~30 dB (large)
+        seuil = (float) threshDb;
+        const double p = 0.04 + 0.66 * std::pow (1.0 - width, 1.5);
+        marge = (float) (1.5 + 30.0 * (1.0 - width) * (1.0 - width));
+        nP = (int) std::nearbyint (RA * p);
+        const double sm = width >= 0.999 ? 0.0 : 0.6 * p;
+        sizeSm = std::max (3, 2 * (int) std::nearbyint (RA * sm) + 1);
+        sizeO = 2 * (int) std::nearbyint (RA * (0.5 + (1.0 - width))) + 1;
+        sizeI = 2 * (int) std::nearbyint (RA * (p + 0.05)) + 1;
+        sizeO = std::max (sizeO, sizeI + 2);
+        sizeS = std::max (3, 2 * (nP / 2) + 1);
     }
 
     void setGain (double gainDb)                              // en direct, sans réinitialiser : profondeur et sens seulement
@@ -229,6 +237,19 @@ private:
         else                                { lo = 25.0; hi = f0 * std::pow (2.0, ctx); }
         lo = std::max (lo, 20.0);
         hi = std::min (hi, 0.45 * fs);
+        zoneLo = lo; zoneHi = hi;
+        // contexte d'analyse de 4 octaves minimum (voir _proto/prisme_tame.py : _grille) ; seule l'analyse s'elargit, la synthese reste sur les bandes de poids >= 0,02
+        constexpr double span = 4.0;
+        if (std::log2 (hi / lo) < span)
+        {
+            const double ext = span - std::log2 (hi / lo);
+            double lo2 = std::max (lo / std::pow (2.0, ext / 2.0), 20.0), hi2 = std::min (hi * std::pow (2.0, ext / 2.0), 0.45 * fs);
+            double rest = span - std::log2 (hi2 / lo2);
+            if (rest > 0.0 && lo2 > 20.0) lo2 = std::max (lo2 / std::pow (2.0, rest), 20.0);
+            rest = span - std::log2 (hi2 / lo2);
+            if (rest > 0.0 && hi2 < 0.45 * fs) hi2 = std::min (hi2 * std::pow (2.0, rest), 0.45 * fs);
+            lo = lo2; hi = hi2;
+        }
         const int n = std::max ((int) std::ceil (std::log2 (hi / lo) * RA) + 1, 8);
         f.clear();
         for (int i = 0; i < n; ++i)
@@ -367,7 +388,7 @@ public:
 
 private:
 
-    double fs = 48000, sign = -1, depth = 9, cAtt = 0, cRel = 0;
+    double fs = 48000, sign = -1, depth = 9, cAtt = 0, cRel = 0, zoneLo = 20, zoneHi = 20000;
     float ratio = 1, seuil = 4.5f, marge = 1.5f;
     int sizeV4 = 97, nLt = 0;
     double xx = 1.0, cLt = 0.0;

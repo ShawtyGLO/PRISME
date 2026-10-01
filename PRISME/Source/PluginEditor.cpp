@@ -40,8 +40,17 @@ CurveDisplay::CurveDisplay (PrismeProcessor& p, std::function<int()> getSel, std
 
 float CurveDisplay::xOf (float f) const { return std::log (f / kFMin) / std::log (kFMax / kFMin) * (float) getWidth(); }
 float CurveDisplay::fOf (float x) const { return kFMin * std::pow (kFMax / kFMin, x / (float) getWidth()); }
-float CurveDisplay::yOf (float g) const { const float hh = (float) getHeight() - kTop; return kTop + hh / 2.0f - (g / kGMax) * (hh / 2.0f - 16.0f); }
-float CurveDisplay::gOf (float y) const { const float hh = (float) getHeight() - kTop; return (kTop + hh / 2.0f - y) / (hh / 2.0f - 16.0f) * kGMax; }
+// Échelle verticale AUTOMATIQUE : ±15 dB, élargie par pas de 5 dB (jusqu'à ±30) quand le gain effectif (réglage × Intensité) d'une bande dépasse — la courbe continue de bouger.
+void CurveDisplay::updateView()
+{
+    float m = 0.0f;
+    for (int i = 0; i < pp::nBands; ++i)
+        if (pp::raw (proc.apvts, pp::pid (i, "on")) > 0.5f) m = juce::jmax (m, std::abs (pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)));
+    gView = juce::jlimit (kGMax, 30.0f, std::ceil (m / 5.0f) * 5.0f);
+}
+
+float CurveDisplay::yOf (float g) const { const float hh = (float) getHeight() - kTop; return kTop + hh / 2.0f - (g / gView) * (hh / 2.0f - 16.0f); }
+float CurveDisplay::gOf (float y) const { const float hh = (float) getHeight() - kTop; return (kTop + hh / 2.0f - y) / (hh / 2.0f - 16.0f) * gView; }
 float CurveDisplay::fyDb (float db) const { return kTop + (-db / 48.0f) * ((float) getHeight() - kTop - 8.0f); }      // courbe de filtre : 0 dB en haut, −48 dB en bas
 
 float CurveDisplay::magFiltre (int b, float f) const
@@ -66,7 +75,8 @@ float CurveDisplay::effectif (int b, int shape, float f0, float q, float gain, f
     return 20.0f * std::log10 (juce::jmax (1e-6f, 1.0f + a * magFiltre (b, f)));
 }
 
-juce::Rectangle<int> CurveDisplay::autresRect() const { return { getWidth() / 2 - 90, 6, 180, 18 }; }
+// Hors de la zone des triangles de filtres (bande du haut) : un bouton posé sur leur course les rendrait inatteignables.
+juce::Rectangle<int> CurveDisplay::autresRect() const { return { getWidth() - 190, getHeight() - 34, 184, 16 }; }
 
 int CurveDisplay::triangleAt (juce::Point<int> p) const
 {
@@ -156,6 +166,7 @@ void CurveDisplay::runFft (Ana& a)
 
 void CurveDisplay::paint (juce::Graphics& g)
 {
+    updateView();
     const float w = (float) getWidth(), h = (float) getHeight();
     g.setColour (col::panel);
     g.fillRoundedRectangle (getLocalBounds().toFloat(), 10.0f);
@@ -175,8 +186,10 @@ void CurveDisplay::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xff6c7482));
         g.drawText (f >= 1000.0f ? juce::String (f / 1000.0f, 0) + "k" : juce::String ((int) f), (int) x + 3, (int) h - 14, 30, 12, juce::Justification::left);
     }
-    for (int gdb : { -12, -6, 0, 6, 12 })
+    const std::vector<int> graduations = gView <= 15.0f ? std::vector<int> { -12, -6, 0, 6, 12 } : std::vector<int> { -30, -20, -10, 0, 10, 20, 30 };
+    for (int gdb : graduations)
     {
+        if (std::abs ((float) gdb) > gView) continue;
         const float y = yOf ((float) gdb);
         g.setColour (gdb == 0 ? juce::Colour (0xff39414c) : juce::Colour (0xff22272e));
         g.drawHorizontalLine ((int) y, 0.0f, w);
@@ -235,7 +248,7 @@ void CurveDisplay::paint (juce::Graphics& g)
     {
         bands[i] = { pp::raw (proc.apvts, pp::pid (i, "on")) > 0.5f, juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "type"))),
                      juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "forme"))), pp::raw (proc.apvts, pp::pid (i, "freq")),
-                     pp::raw (proc.apvts, pp::pid (i, "q")), juce::jlimit (-kGMax, kGMax, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)) };
+                     pp::raw (proc.apvts, pp::pid (i, "q")), juce::jlimit (-gView, gView, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)) };
     }
 
     for (int i = 0; i < pp::nBands; ++i)
@@ -388,7 +401,7 @@ juce::String CurveDisplay::helpAt (juce::Point<int> p) const
     const auto ord = pp::bandOrder (proc.apvts);
     for (int i = 0; i < pp::nBands; ++i)
     {
-        const float x = xOf (pp::raw (proc.apvts, pp::pid (i, "freq"))), y = yOf (juce::jlimit (-kGMax, kGMax, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)));
+        const float x = xOf (pp::raw (proc.apvts, pp::pid (i, "freq"))), y = yOf (juce::jlimit (-gView, gView, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)));
         if (std::hypot (x - (float) p.x, y - (float) p.y) < 18.0f)
             return U8 ("Bande ") + juce::String (ord.rankOf[i] + 1) + U8 (" (") + pp::typeNames()[juce::roundToInt (pp::raw (proc.apvts, pp::pid (i, "type")))]
                  + U8 (") : glisser = fréquence et gain, molette = Q, double-clic = activer / couper.");
@@ -424,7 +437,7 @@ void CurveDisplay::mouseDown (const juce::MouseEvent& e)
     float bd = 18.0f;
     for (int i = 0; i < pp::nBands; ++i)
     {
-        const float x = xOf (pp::raw (proc.apvts, pp::pid (i, "freq"))), y = yOf (juce::jlimit (-kGMax, kGMax, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)));
+        const float x = xOf (pp::raw (proc.apvts, pp::pid (i, "freq"))), y = yOf (juce::jlimit (-gView, gView, pp::raw (proc.apvts, pp::pid (i, "gain")) * scaleOf (proc)));
         const float d = std::hypot (x - (float) e.x, y - (float) e.y);
         if (d < bd) { bd = d; best = i; }
     }
@@ -466,9 +479,10 @@ void CurveDisplay::mouseDrag (const juce::MouseEvent& e)
         return;
     }
     if (dragBand < 0) return;
+    updateView();
     const float f = juce::jlimit (kFMin, kFMax, fOf (juce::jlimit (0.0f, (float) getWidth(), (float) e.x)));
     const bool exciter = juce::roundToInt (pp::raw (proc.apvts, pp::pid (dragBand, "type"))) == 0;      // Exciter : gain de 0 à +15 seulement
-    const float g = std::round (juce::jlimit (exciter ? 0.0f : -kGMax, kGMax, gOf ((float) e.y)) * 10.0f) / 10.0f;
+    const float g = std::round (juce::jlimit (exciter ? 0.0f : -gView, gView, gOf ((float) e.y)) * 10.0f) / 10.0f;
     setParam (pp::pid (dragBand, "freq"), f, false);
     const float sc = scaleOf (proc);                                                    // g est le gain EFFECTIF (affiché) : le réglage de la bande est g / Intensité
     const float gBase = sc > 0.05f ? std::round (juce::jlimit (-kGMax, kGMax, g / sc) * 10.0f) / 10.0f : pp::raw (proc.apvts, pp::pid (dragBand, "gain"));

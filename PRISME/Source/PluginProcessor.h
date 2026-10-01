@@ -79,6 +79,8 @@ private:
         double lastLink = 0.5;
         std::atomic<double> densTarget { 1.0 };
         double lastDens = 1.0;
+        std::atomic<double> widthTarget { 0.5 };               // Largeur du Tame en direct
+        double lastWidth = 0.5;
         std::atomic<bool> needRebuild { false };
         // thread message
         prisme::BandeSpec msgStruct;
@@ -95,6 +97,7 @@ private:
     bool readRing (std::int64_t from, int count, double* L, double* R) const;
 
     static constexpr int fadeLen = 1024;
+    static constexpr double histSecondsTame = 2.0;              // préchauffage court du Tame : un balayage de fréquence reconstruit la bande à chaque pas (6 s de rejeu = ~1 s de calcul = rien d'audible pendant le geste)
     static constexpr double histSeconds = 6.0;                  // préchauffage : le Tame v4 a une mémoire de 3 s (courbe de référence) ; 6 s pour une marge confortable
 
     std::array<Slot, prismeParams::nBands> slots;

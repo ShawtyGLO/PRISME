@@ -27,6 +27,8 @@ private:
     float fOf (float x) const;
     float yOf (float g) const;
     float gOf (float y) const;
+    void updateView();                                          // échelle verticale automatique (±15 … ±30 dB)
+    float gView = 15.0f;
     static float response (int shape, float f0, float q, float gain, float f);
     float magFiltre (int band, float f) const;                 // module des filtres de la bande (Linkwitz-Riley)
     float effectif (int band, int shape, float f0, float q, float gain, float f) const;   // effet de la bande, filtres compris

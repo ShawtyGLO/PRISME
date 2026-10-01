@@ -98,6 +98,12 @@ public:
     }
 
     void setLink (double l) { spec.link = l; }
+    void setWidth (double wd)                                // Largeur du Tame, en direct
+    {
+        spec.width = wd;
+        for (int i = 0; i < n; ++i)
+            if (tame[(size_t) i]) tame[(size_t) i]->setWidth (wd);
+    }
     void setDens (double d)
     {
         spec.dens = d;

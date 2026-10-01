@@ -53,7 +53,12 @@ struct PrismeProcessor::Builder : public juce::Thread
         // préchauffage : on rejoue l'historique, puis on rattrape ce qui est arrivé pendant ce temps (par tours, jusqu'à un petit reste)
         std::int64_t consumed = 0;
         std::vector<double> L, R;
-        const int hist = (int) (histSeconds * fs);
+        const int hist = (int) ((spec.type == prisme::TypeBande::Tame ? histSecondsTame : histSeconds) * fs);
+        auto perime = [&]                                                               // une demande plus récente existe : inutile de finir ce travail (balayage de fréquence)
+        {
+            const juce::ScopedLock lg (cs);
+            return gen[(size_t) band] != myGen;
+        };
         bool first = true;
         for (int round = 0; round < 8 && ! threadShouldExit(); ++round)
         {
@@ -66,7 +71,11 @@ struct PrismeProcessor::Builder : public juce::Thread
             R.resize ((size_t) n);
             if (! owner.readRing (from, (int) n, L.data(), R.data())) continue;
             double dl, dr;
-            for (std::int64_t i = 0; i < n; ++i) nb->process (L[(size_t) i], R[(size_t) i], dl, dr);
+            for (std::int64_t i = 0; i < n; ++i)
+            {
+                nb->process (L[(size_t) i], R[(size_t) i], dl, dr);
+                if ((i & 4095) == 4095 && perime()) return;
+            }
             consumed = now;
             first = false;
             if (owner.counter.load() - consumed < 2048) break;
@@ -194,6 +203,7 @@ void PrismeProcessor::syncBands (bool immediate)
         structure.tilt = 0.0;
         structure.link = 0.0;
         structure.dens = 0.0;                                                 // gain et saturation se règlent en direct : pas de reconstruction
+        if (spec.type == prisme::TypeBande::Tame) structure.width = 0.0;      // Largeur du Tame : en direct aussi
 
         if (immediate)
         {
@@ -216,6 +226,8 @@ void PrismeProcessor::syncBands (bool immediate)
             s.lastLink = spec.link;
             s.densTarget.store (spec.dens);
             s.lastDens = spec.dens;
+            s.widthTarget.store (spec.width);
+            s.lastWidth = spec.width;
             s.msgStruct = structure;
             s.msgAlive = spec.actif();
             s.zeroSince = 0;
@@ -245,6 +257,7 @@ void PrismeProcessor::syncBands (bool immediate)
         s.tiltTarget.store (spec.tilt);
         s.linkTarget.store (spec.link);
         s.densTarget.store (spec.dens);
+        s.widthTarget.store (spec.width);
         if (! s.msgAlive || structure != s.msgStruct || s.needRebuild.exchange (false))
         {
             builder->request (b, spec);
@@ -330,6 +343,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                         s.lastLink = s.linkTarget.load();
                         s.warm->setDens (s.densTarget.load());
                         s.lastDens = s.densTarget.load();
+                        s.warm->setWidth (s.widthTarget.load());
+                        s.lastWidth = s.widthTarget.load();
                         s.old = std::move (s.cur);
                         s.cur = std::move (s.warm);
                         s.fadePos = 0;
@@ -347,6 +362,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             if (s.cur && lk != s.lastLink) { s.cur->setLink (lk); s.lastLink = lk; }
             const double dn = s.densTarget.load();
             if (s.cur && dn != s.lastDens) { s.cur->setDens (dn); s.lastDens = dn; }
+            const double wd = s.widthTarget.load();
+            if (s.cur && wd != s.lastWidth) { s.cur->setWidth (wd); s.lastWidth = wd; }
         }
 
         // ---- filtres de bande : réglages du bloc (bande active = présente et non coupée) ----
