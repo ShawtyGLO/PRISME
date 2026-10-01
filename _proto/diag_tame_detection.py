@@ -5,7 +5,8 @@ import os, sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "_libs"))
 import numpy as np
 from scipy.signal import lfilter, welch
-from prisme_tame import tame_band
+import importlib
+tame_band = importlib.import_module(os.environ.get("TAME_MODULE", "prisme_tame")).tame_band
 sys.stdout.reconfigure(encoding="utf-8")
 DET = os.environ.get("DET", "v4")
 print("détection :", DET)

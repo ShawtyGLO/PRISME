@@ -75,6 +75,7 @@ class AnalysePartagee:
         Lp = maximum_filter1d(L, size=3, axis=0, mode="nearest")
         Ls = uniform_filter1d(Lp, size=3, axis=0, mode="nearest").astype(np.float64)
         e = np.empty((N, m), dtype=np.float32)
+        rel = np.empty((N, m), dtype=np.float32)
         for j in range(m):
             self.n_lt += 1
             c = max(1.0 - 1.0 / self.n_lt, 0.0) if self.n_lt * DEC / self.fs < TAU_LT else self.c_lt
@@ -88,6 +89,10 @@ class AnalysePartagee:
             self.courbe_s = self.courbe_c.copy() if self.courbe_s is None else self.a_cs * self.courbe_s + (1.0 - self.a_cs) * self.courbe_c
             decal = np.median(Ls[:, j] - self.v_lt)
             e[:, j] = (Ls[:, j] - (self.courbe_s + decal)).astype(np.float32)
+            rel[:, j] = Ls[:, j] - self.v_lt                     # niveau relatif à l habituel (sans le décalage d ensemble : un passage globalement faible doit compter pour le Lift)
+        # sorties additionnelles pour Lift / Shape (lues par prisme_lift5_shape5) : niveau relatif au spectre long terme, niveau rapide (dBFS)
+        self.rel = rel
+        self.Lf = (20.0 * np.log10(ef_s * (np.pi / 2) + 1e-12)).astype(np.float32)
         return n, idx, m, Lp, e
 
 
