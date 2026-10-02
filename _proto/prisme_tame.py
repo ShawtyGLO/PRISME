@@ -31,9 +31,9 @@ DET_DEFAULT = os.environ.get('TAME_DET', 'v4')
 # Détection v4 (2026-10-01) : référence ROBUSTE au lieu de la moyenne des voisines (qui montait quand beaucoup de bandes étaient hautes : 8 résonances → −1,9 dB au lieu de −9 ;
 # grave instable selon la note). Spectre « blanchi » par une pente rose (+3 dB/oct), référence = percentile bas sur ±V octaves, plus une mémoire lente (τ 3 s)
 # qui garde constante la détection d'une résonance permanente. Largeur découplée : elle ne règle plus que la finesse de l'encoche.
-V4_PAS = 32                                      # recalcul de la courbe toutes les 32 trames décimées (512 échantillons) : coût ÷ 32
+V4_PAS = 16                                      # recalcul de la courbe toutes les 16 trames décimées (512 échantillons ≈ 10 ms) : coût ÷ 16
 V4_PCT, V4_OCT, V4_TAU, V4_TILT = 15.0, 2.0, 3.0, 0.0      # percentile bas sur ±1 octave : 8 résonances denses toutes détectées (balayage 2026-10-01)
-DEC = 16         # la détection (niveaux, excès, lissage) tourne à fs/16 : les niveaux de bande varient lentement (τ ≥ 4 ms)
+DEC = 32         # la détection (niveaux, excès, lissage) tourne à fs/32 (2026-10-02 : était fs/16 ; écart −40 à −60 dB sous le delta, détection ÷ 2 en CPU) : les niveaux de bande varient lentement (τ ≥ 4 ms)
 
 
 def _zone(shape, f0, q, fs, ctx):

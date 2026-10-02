@@ -25,7 +25,7 @@ namespace prisme
 class Tame
 {
 public:
-    static constexpr int RA = 24, JK = 18, DEC = 16;
+    static constexpr int RA = 24, JK = 18, DEC = 32;
     static constexpr double QA = 14.0, QS = 20.0, threshDb = 4.5, ctx = 1.0;
 
     void prepare (double fs_, Forme forme, double f0, double q, double gainDb, double width)
@@ -77,7 +77,7 @@ public:
         for (int m = -JK; m <= JK; ++m)
             K[(size_t) (m + JK)] = (double) (float) response (rbjBandpass0dB (fs, 3000.0 * std::pow (2.0, (double) m / RA), QS), pts).real();
         for (auto* v : { &Lf, &Lp, &Ls, &mo, &mi, &refv, &epv, &redf, &redm, &redu, &tmpf }) v->assign ((size_t) N, 0.0f);
-        for (auto* v : { &redD, &SD, &lastRed, &lastS, &ef, &es, &zra, &zrr }) v->assign ((size_t) N, 0.0);
+        for (auto* v : { &redD, &SD, &lastRed, &lastS, &ef, &es, &zra, &zrr, &Sacc }) v->assign ((size_t) N, 0.0);
         line.assign ((size_t) N + 400, 0.0);
         lgc.assign ((size_t) N, 0.0);                             // v4 : abscisse en octaves, centree
         double mlg = 0.0;
@@ -318,7 +318,7 @@ public:
         const double pente = num / xx;
         for (int k = 0; k < N; ++k) detr[(size_t) k] = lt[(size_t) k] - lgc[(size_t) k] * pente;
         const int h = sizeV4 / 2, rang = (int) ((double) sizeV4 * 15.0 / 100.0);
-        const bool recalc = ((nLt - 1) % 32) == 0;                 // courbe recalculée toutes les 32 trames décimées (≈ 10 ms), tenue entre deux : elle suit un spectre à τ 3 s
+        const bool recalc = ((nLt - 1) % 16) == 0;                 // courbe recalculée toutes les 16 trames décimées (≈ 10 ms), tenue entre deux : elle suit un spectre à τ 3 s
         for (int k = 0; k < N; ++k)
         {
             if (recalc)
@@ -372,16 +372,15 @@ public:
             redD[i] = std::max (ra, rr);
             tmpf[i] = redD[i] > 0.25 ? 1.0f : 0.0f;
         }
-        for (int k = 0; k < N; ++k)
+        // normalisation locale S[k] = max(float(somme des noyaux des bandes actives voisines), 1) : creuse (peu de bandes actives en general)
+        std::fill (Sacc.begin(), Sacc.end(), 0.0);
+        for (int j = 0; j < N; ++j)
         {
-            double s = 0.0;
-            for (int d = -JK; d <= JK; ++d)
-            {
-                const int j = k - d;
-                if (j >= 0 && j < N) s += K[(size_t) (JK + d)] * (double) tmpf[(size_t) j];
-            }
-            SD[(size_t) k] = std::max ((double) (float) s, 1.0);
+            if (tmpf[(size_t) j] == 0.0f) continue;
+            const int k0 = std::max (0, j - JK), k1 = std::min (N - 1, j + JK);
+            for (int k = k0; k <= k1; ++k) Sacc[(size_t) k] += K[(size_t) (JK + k - j)];
         }
+        for (int k = 0; k < N; ++k) SD[(size_t) k] = std::max ((double) (float) Sacc[(size_t) k], 1.0);
         lastRed = redD;
         lastS = SD;
     }
@@ -396,7 +395,7 @@ private:
     double aCs = 0.0;
     int N = 0, nP = 0, sizeSm = 3, sizeO = 3, sizeI = 3, sizeS = 3;
     long count = 0;
-    std::vector<double> f, w, K, cf, cse, ef, es, zra, zrr, redD, SD, lastRed, lastS, cPrev, cCur, line;
+    std::vector<double> Sacc, f, w, K, cf, cse, ef, es, zra, zrr, redD, SD, lastRed, lastS, cPrev, cCur, line;
     std::vector<int> act;
     std::vector<double> aB0, aB1, aB2, aA1, aA2, aZ1, aZ2, aOmCf, aOmCs;          // analyse : N biquads + enveloppes (tableaux séparés → vectorisable)
     std::vector<double> sB0, sB1, sB2, sA1, sA2, sZ1, sZ2, term;                    // synthèse : bandes actives
