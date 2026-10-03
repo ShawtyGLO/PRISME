@@ -30,6 +30,7 @@ private:
     void updateView();                                          // échelle verticale automatique (±15 … ±30 dB)
     float gView = 15.0f;
     static float response (int shape, float f0, float q, float gain, float f);
+    bool filtreActif (int band, const char* pre) const;         // filtre posé et non contourné
     float magFiltre (int band, float f) const;                 // module des filtres de la bande (Linkwitz-Riley)
     float effectif (int band, int shape, float f0, float q, float gain, float f) const;   // effet de la bande, filtres compris
     float fyDb (float db) const;
@@ -42,7 +43,8 @@ private:
     std::function<int()> selGet;
     std::function<void (int)> selSet;
     bool showSpec = true;
-    int dragBand = -1, dragFilt = -1;
+    int dragBand = -1, dragFilt = -1, filtDownX = 0;
+    bool filtMoved = false;
 
     juce::dsp::FFT fft { 11 };
     juce::dsp::WindowingFunction<float> window { 2048, juce::dsp::WindowingFunction<float>::hann };
@@ -184,8 +186,8 @@ private:
     HelpBar helpBar;
     juce::Slider scaleSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> scaleAttach;
-    prismeUi::PillButton deltaBtn { U8 ("Écouter le delta"), U8 ("Écouter le delta") }, specBtn { "Spectre", "Spectre" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttach;
+    prismeUi::PillButton deltaPosBtn { U8 ("Δ +  ajouté"), U8 ("Δ +  ajouté") }, deltaNegBtn { U8 ("Δ −  retiré"), U8 ("Δ −  retiré") }, specBtn { "Spectre", "Spectre" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaPosAttach, deltaNegAttach;
     juce::Slider outSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outAttach;
 

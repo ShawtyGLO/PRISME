@@ -153,6 +153,9 @@ void PrismeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
 void PrismeProcessor::timerCallback()
 {
+    if (prismeParams::raw (apvts, "delta") > 0.5f)                               // migration : l'ancien « Delta » devient Δ+ et Δ−
+        for (const char* id : { "dpos", "dneg", "delta" })
+            if (auto* p = apvts.getParameter (id)) p->setValueNotifyingHost (id[0] == 'd' && id[1] == 'e' ? 0.0f : 1.0f);
     if (fsHz.load() > 0.0)
         syncBands (false);
 }
@@ -277,7 +280,9 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float* chL = buffer.getWritePointer (0);
     float* chR = nCh > 1 ? buffer.getWritePointer (1) : nullptr;
     const int cap = (int) bufL.size();
-    const bool delta = prismeParams::raw (apvts, "delta") > 0.5f;
+    const bool dAll = prismeParams::raw (apvts, "delta") > 0.5f;                 // ancien paramètre : équivaut à Δ+ et Δ−
+    const bool usePos = dAll || prismeParams::raw (apvts, "dpos") > 0.5f, useNeg = dAll || prismeParams::raw (apvts, "dneg") > 0.5f;
+    const bool delta = usePos || useNeg;
     bool solo[prismeParams::nBands];
     bool anySolo = false;
     for (int b = 0; b < prismeParams::nBands; ++b) { solo[b] = prismeParams::raw (apvts, prismeParams::pid (b, "solo")) > 0.5f; anySolo |= solo[b]; }
@@ -394,7 +399,7 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             const double dryL = secL.push (L), dryR = secR.push (R);
             double apL = dryL, apR = dryR;
             filtres.sec (apL, apR);                            // sec passé par les passe-tout des filtres actifs
-            double sumL = 0.0, sumR = 0.0, soloL = 0.0, soloR = 0.0;
+            double sumL = 0.0, sumR = 0.0, soloL = 0.0, soloR = 0.0, dsL = 0.0, dsR = 0.0;       // ds : delta des bandes retenues par Δ+ / Δ−
             for (size_t si = 0; si < slots.size(); ++si)
             {
                 auto& s = slots[si];
@@ -412,15 +417,16 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 else { dL = cL; dR = cR; }
                 filtres.delta ((int) si, dL, dR);
                 sumL += dL; sumR += dR;
+                if (s.gainTarget.load (std::memory_order_relaxed) > 0.0f ? usePos : useNeg) { dsL += dL; dsR += dR; }          // Δ+ : bandes qui ajoutent (gain > 0) ; Δ− : bandes qui retirent (gain < 0)
                 if (solo[si]) { soloL += dL; soloR += dR; }
                 if (wetOn) wetTmp[si][(size_t) i] = (float) (0.5 * ((s.cur && s.cur->getSpec().canal == prisme::Canal::Side) ? dL - dR : dL + dR));   // Side : d à gauche, −d à droite
             }
             filtres.avance();
             const double g = (double) outGain.getNextValue();
             const double bm = (double) bypassMix.getNextValue();
-            const double wL = anySolo ? soloL : (delta ? sumL : apL + sumL), wR = anySolo ? soloR : (delta ? sumR : apR + sumR);
-            bufL[(size_t) i] = (bm * wL + (1.0 - bm) * dryL) * g;
-            bufR[(size_t) i] = (bm * wR + (1.0 - bm) * dryR) * g;
+            const double wL = anySolo ? soloL : (delta ? dsL : apL + sumL), wR = anySolo ? soloR : (delta ? dsR : apR + sumR);
+            bufL[(size_t) i] = bm * wL * g + (1.0 - bm) * dryL;                  // le niveau de sortie ne touche pas le signal contourné : A/B sans sortir du plugin
+            bufR[(size_t) i] = bm * wR * g + (1.0 - bm) * dryR;
         }
 
         if (wetOn)

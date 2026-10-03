@@ -53,15 +53,22 @@ float CurveDisplay::yOf (float g) const { const float hh = (float) getHeight() -
 float CurveDisplay::gOf (float y) const { const float hh = (float) getHeight() - kTop; return (kTop + hh / 2.0f - y) / (hh / 2.0f - 16.0f) * gView; }
 float CurveDisplay::fyDb (float db) const { return kTop + (-db / 48.0f) * ((float) getHeight() - kTop - 8.0f); }      // courbe de filtre : 0 dB en haut, −48 dB en bas
 
+// Un filtre est « actif » s'il est posé ET non contourné (clic sur son triangle = coupé / remis pour comparer, il garde sa fréquence).
+bool CurveDisplay::filtreActif (int b, const char* pre) const
+{
+    return pp::raw (proc.apvts, pp::pid (b, (juce::String (pre) + "_on").toRawUTF8())) > 0.5f
+        && pp::raw (proc.apvts, pp::pid (b, (juce::String (pre) + "_mute").toRawUTF8())) < 0.5f;
+}
+
 float CurveDisplay::magFiltre (int b, float f) const
 {
     float m = 1.0f;
-    if (pp::raw (proc.apvts, pp::pid (b, "lc_on")) > 0.5f)
+    if (filtreActif (b, "lc"))
     {
         const float n = juce::roundToInt (pp::raw (proc.apvts, pp::pid (b, "lc_pente"))) == 1 ? 4.0f : 2.0f;       // LR4 : 1/(1+(fc/f)^4) ; LR2 : 1/(1+(fc/f)^2)
         m *= 1.0f / (1.0f + std::pow (pp::raw (proc.apvts, pp::pid (b, "lc_f")) / f, n));
     }
-    if (pp::raw (proc.apvts, pp::pid (b, "hc_on")) > 0.5f)
+    if (filtreActif (b, "hc"))
     {
         const float n = juce::roundToInt (pp::raw (proc.apvts, pp::pid (b, "hc_pente"))) == 1 ? 4.0f : 2.0f;
         m *= 1.0f / (1.0f + std::pow (f / pp::raw (proc.apvts, pp::pid (b, "hc_f")), n));
@@ -274,7 +281,7 @@ void CurveDisplay::paint (juce::Graphics& g)
         }
         g.setColour (c.withAlpha (i == sel ? 1.0f : 0.6f));
         g.strokePath (line, juce::PathStrokeType (i == sel ? 2.0f : 1.0f));
-        if (i == sel && (pp::raw (proc.apvts, pp::pid (i, "lc_on")) > 0.5f || pp::raw (proc.apvts, pp::pid (i, "hc_on")) > 0.5f))
+        if (i == sel && (filtreActif (i, "lc") || filtreActif (i, "hc")))
         {   // la forme SANS filtre, en pointillé : on voit ce qui est retiré
             juce::Path orig;
             bool pn = false;
@@ -300,7 +307,9 @@ void CurveDisplay::paint (juce::Graphics& g)
         for (int i = 0; i < pp::nBands; ++i) if (bands[i].on) s += effectif (i, bands[i].shape, bands[i].f0, bands[i].q, bands[i].gain, fOf ((float) x));
         if (x == 0) sum.startNewSubPath (0.0f, yOf (s)); else sum.lineTo ((float) x, yOf (s));
     }
-    const bool delta = pp::raw (proc.apvts, "delta") > 0.5f;
+    const bool dAnc = pp::raw (proc.apvts, "delta") > 0.5f;
+    const bool dPos = dAnc || pp::raw (proc.apvts, "dpos") > 0.5f, dNeg = dAnc || pp::raw (proc.apvts, "dneg") > 0.5f;
+    const bool delta = dPos || dNeg;
     g.setColour (delta ? juce::Colour (0xffffd166) : juce::Colour (0xfff4f6f8));
     g.strokePath (sum, juce::PathStrokeType (2.0f));
 
@@ -311,7 +320,7 @@ void CurveDisplay::paint (juce::Graphics& g)
         {
             if ((pass == 0) == (i == sel)) continue;                                 // autres d'abord, sélectionnée par-dessus
             if (i != sel && ! autres) continue;
-            if (! bands[i].on || (pp::raw (proc.apvts, pp::pid (i, "lc_on")) < 0.5f && pp::raw (proc.apvts, pp::pid (i, "hc_on")) < 0.5f)) continue;
+            if (! bands[i].on || (! filtreActif (i, "lc") && ! filtreActif (i, "hc"))) continue;
             juce::Path fp;
             bool pn = false;
             for (int x = 0; x <= (int) w; x += 2)
@@ -340,27 +349,34 @@ void CurveDisplay::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xff15181d));
         g.fillRect (0.0f, 0.0f, w, kTop);
         const auto c = col::forType (bands[sel].type);
-        const bool lcOn = pp::raw (proc.apvts, pp::pid (sel, "lc_on")) > 0.5f, hcOn = pp::raw (proc.apvts, pp::pid (sel, "hc_on")) > 0.5f;
+        const bool lcOn = pp::raw (proc.apvts, pp::pid (sel, "lc_on")) > 0.5f, hcOn = pp::raw (proc.apvts, pp::pid (sel, "hc_on")) > 0.5f;      // posés (position)
+        const bool lcAct = filtreActif (sel, "lc"), hcAct = filtreActif (sel, "hc");                                                       // posés et non contournés
         const float xl = lcOn ? xOf (pp::raw (proc.apvts, pp::pid (sel, "lc_f"))) : 14.0f;
         const float xr = hcOn ? xOf (pp::raw (proc.apvts, pp::pid (sel, "hc_f"))) : w - 14.0f;
-        auto tri = [&] (float x, bool actif)
+        auto tri = [&] (float x, bool pose, bool actif)
         {
             juce::Path t;
             t.addTriangle (x - 10.0f, 5.0f, x + 10.0f, 5.0f, x, 25.0f);
+            if (pose && ! actif)                                                   // contourné (A/B) : triangle vide, à sa place
+            {
+                g.setColour (c.withAlpha (0.8f));
+                g.strokePath (t, juce::PathStrokeType (1.5f));
+                return;
+            }
             g.setColour (actif ? c : juce::Colour (0xff3a3f47));
             g.fillPath (t);
             g.setColour (juce::Colour (0xff0b0d10));
             g.strokePath (t, juce::PathStrokeType (1.2f));
         };
-        tri (xl, lcOn);
-        tri (xr, hcOn);
+        tri (xl, lcOn, lcAct);
+        tri (xr, hcOn, hcAct);
         g.setFont (11.0f);
         auto pente = [&] (const char* id) { return juce::roundToInt (pp::raw (proc.apvts, pp::pid (sel, id))) == 1 ? juce::String ("24") : juce::String ("12"); };
         const bool proches = xr - xl < 260.0f;
-        g.setColour (lcOn ? c : col::mut);
+        g.setColour (lcAct ? c : col::mut);
         g.drawText (lcOn ? fmtFreq (pp::raw (proc.apvts, pp::pid (sel, "lc_f"))) + U8 (" · ") + pente ("lc_pente") + " dB/oct" : U8 ("coupe-bas"),
                     (int) juce::jmin (xl + 15.0f, w - 150.0f), proches ? (int) kTop + 4 : 8, 140, 14, juce::Justification::left);
-        g.setColour (hcOn ? c : col::mut);
+        g.setColour (hcAct ? c : col::mut);
         g.drawText (hcOn ? fmtFreq (pp::raw (proc.apvts, pp::pid (sel, "hc_f"))) + U8 (" · ") + pente ("hc_pente") + " dB/oct" : U8 ("coupe-haut"),
                     (int) juce::jmax (xr - 155.0f, 10.0f), 8, 140, 14, juce::Justification::right);
         g.setColour (col::mut.withAlpha (0.8f));
@@ -383,7 +399,9 @@ void CurveDisplay::paint (juce::Graphics& g)
     {
         g.setColour (juce::Colour (0xffffd166));
         g.setFont (12.0f);
-        g.drawText (U8 ("DELTA : on n'entend que ce que les bandes ajoutent ou retirent"), 12, (int) kTop + 4, 500, 16, juce::Justification::left);
+        g.drawText (dPos && dNeg ? U8 ("DELTA : on n'entend que ce que les bandes ajoutent et retirent")
+                    : dPos ? U8 ("DELTA + : on n'entend que ce que les bandes AJOUTENT (gain positif)") : U8 ("DELTA − : on n'entend que ce que les bandes RETIRENT (gain négatif)"),
+                    12, (int) kTop + 4, 520, 16, juce::Justification::left);
     }
     g.setColour (col::mut);
     g.setFont (11.0f);
@@ -397,7 +415,7 @@ juce::String CurveDisplay::helpAt (juce::Point<int> p) const
 {
     if (autresRect().contains (p)) return U8 ("Clic : afficher (en pointillés) ou masquer les filtres des autres bandes.");
     const int t = triangleAt (p);
-    if (t >= 0) return (t == 0 ? U8 ("Coupe-bas") : U8 ("Coupe-haut")) + U8 (" de la bande sélectionnée (sur le signal qu'elle ajoute) : glisser = fréquence, molette ou clic droit = pente 12 / 24 dB/oct, double-clic ou pousser contre le bord = désactiver.");
+    if (t >= 0) return (t == 0 ? U8 ("Coupe-bas") : U8 ("Coupe-haut")) + U8 (" de la bande sélectionnée (sur le signal qu'elle ajoute) : clic = contourner / remettre (pour comparer en A/B), glisser = fréquence, molette ou clic droit = pente 12 / 24 dB/oct, double-clic ou pousser contre le bord = désactiver.");
     const auto ord = pp::bandOrder (proc.apvts);
     for (int i = 0; i < pp::nBands; ++i)
     {
@@ -429,6 +447,8 @@ void CurveDisplay::mouseDown (const juce::MouseEvent& e)
             return;
         }
         dragFilt = t;
+        filtDownX = e.x;
+        filtMoved = false;
         for (const char* n : { "_on", "_f" })
             if (auto* p = proc.apvts.getParameter (pp::pid (s, (juce::String (pre) + n).toRawUTF8()))) p->beginChangeGesture();
         return;
@@ -455,6 +475,12 @@ void CurveDisplay::mouseDrag (const juce::MouseEvent& e)
     if (dragFilt >= 0)
     {
         const int s = selGet();
+        if (! filtMoved && std::abs (e.x - filtDownX) < 4) return;                    // simple clic en cours : pas de déplacement
+        if (! filtMoved)
+        {
+            filtMoved = true;
+            setParam (pp::pid (s, dragFilt == 0 ? "lc_mute" : "hc_mute"), 0.0f, false);       // on déplace : le filtre se remet en service
+        }
         const float x = juce::jlimit (0.0f, (float) getWidth(), (float) e.x);
         constexpr float bord = 10.0f;                                                 // poussé contre le bord → désactivé
         if (dragFilt == 0)
@@ -497,6 +523,11 @@ void CurveDisplay::mouseUp (const juce::MouseEvent&)
         const char* pre = dragFilt == 0 ? "lc" : "hc";
         for (const char* n : { "_on", "_f" })
             if (auto* p = proc.apvts.getParameter (pp::pid (selGet(), (juce::String (pre) + n).toRawUTF8()))) p->endChangeGesture();
+        if (! filtMoved && pp::raw (proc.apvts, pp::pid (selGet(), (juce::String (pre) + "_on").toRawUTF8())) > 0.5f)       // simple clic sur un filtre posé : A/B
+        {
+            const auto id = pp::pid (selGet(), (juce::String (pre) + "_mute").toRawUTF8());
+            setParam (id, pp::raw (proc.apvts, id) > 0.5f ? 0.0f : 1.0f, true);
+        }
         dragFilt = -1;
         return;
     }
@@ -606,6 +637,14 @@ void BandCard::rebuild (int b)
     addAndMakeVisible (*types);
     onButton = std::make_unique<PillButton> ("Delta", "Delta");
     onAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (ap, pp::pid (b, "solo"), *onButton);
+    onButton->onClick = [this, b]                                                  // delta de bande EXCLUSIF : activer celui-ci coupe les autres ; Maj / Ctrl / Cmd-clic = en écouter plusieurs
+    {
+        const auto m = juce::ModifierKeys::getCurrentModifiers();
+        if (! onButton->getToggleState() || m.isShiftDown() || m.isCtrlDown() || m.isCommandDown()) return;
+        for (int o = 0; o < pp::nBands; ++o)
+            if (o != b)
+                if (auto* p = proc.apvts.getParameter (pp::pid (o, "solo"))) p->setValueNotifyingHost (0.0f);
+    };
     addAndMakeVisible (*onButton);
     forme = std::make_unique<Seg> (ap, pp::pid (b, "forme"), pp::formeNames(), colour);
     addAndMakeVisible (*forme);
@@ -649,7 +688,7 @@ void BandCard::rebuild (int b)
         addKnob ("release", U8 ("Relâchement"), [] (double v) { return juce::String (juce::roundToInt (v)) + " ms"; });
     }
     // ---- aides du bandeau ----
-    aide (*onButton, U8 ("Delta de la bande : n'écoute que le signal ajouté (wet) par cette bande."));
+    aide (*onButton, U8 ("Delta de la bande : n'écoute que le signal ajouté (wet) par cette bande. Activer celui d'une autre bande remplace celui-ci ; Maj ou Ctrl + clic pour en écouter plusieurs."));
     forme->setOptionHelp ({ U8 ("Shelf grave : la bande agit en dessous de la fréquence (le Q est fixe)."), U8 ("Cloche : la bande agit autour de la fréquence, avec la largeur donnée par Q."), U8 ("Shelf aigu : la bande agit au-dessus de la fréquence (le Q est fixe).") });
     canal->setOptionHelp ({ U8 ("Stéréo : la bande traite les deux canaux (Exciter : source prise sur le milieu, même wet à gauche et à droite)."), U8 ("Mid : ne traite que le milieu (L+R)/2."), U8 ("Side : ne traite que les côtés (L−R)/2."),
                             U8 ("L : ne traite que le canal gauche."), U8 ("R : ne traite que le canal droit.") });
@@ -781,10 +820,11 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
       card (p)
 {
     addAndMakeVisible (content);
-    for (auto* c : std::initializer_list<juce::Component*> { &display, &tabs, &card, &deltaBtn, &specBtn, &outSlider, &scaleSlider, &helpBar })
+    for (auto* c : std::initializer_list<juce::Component*> { &display, &tabs, &card, &deltaPosBtn, &deltaNegBtn, &specBtn, &outSlider, &scaleSlider, &helpBar })
         content.addAndMakeVisible (c);
     content.addMouseListener (&helpBar, true);
-    deltaAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "delta", deltaBtn);
+    deltaPosAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "dpos", deltaPosBtn);
+    deltaNegAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "dneg", deltaNegBtn);
     specBtn.setToggleState (true, juce::dontSendNotification);
     specBtn.onClick = [this] { display.setShowSpectrum (specBtn.getToggleState()); };
 
@@ -807,7 +847,8 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
     scaleSlider.updateText();
     aide (scaleSlider, U8 ("Intensité : multiplie proportionnellement le gain de TOUTES les bandes. 100 % = vos réglages ; moins = traitement réduit ; plus (jusqu'à 200 %) = poussé à l'extrême."));
     aide (outSlider, U8 ("Niveau de sortie du plugin (−12 à +12 dB)."));
-    aide (deltaBtn, U8 ("Écouter le delta : n'écoute que ce que les bandes ajoutent ou retirent (toutes les bandes)."));
+    aide (deltaPosBtn, U8 ("Delta + : n'écoute que ce que les bandes AJOUTENT (bandes à gain positif). Avec Delta − : tout le delta."));
+    aide (deltaNegBtn, U8 ("Delta − : n'écoute que ce que les bandes RETIRENT (bandes à gain négatif). Avec Delta + : tout le delta."));
     aide (specBtn, U8 ("Affiche ou masque le spectre de fond dans la courbe."));
 
     // Le titre « P R I S M E » est un bouton de bypass cache (clic = bypass / retour) ; il s'assombrit quand le bypass est actif.
@@ -882,7 +923,9 @@ void PrismeEditor::layoutContent()
     header.removeFromRight (80);
     specBtn.setBounds (header.removeFromRight (90).withTrimmedTop (8).withHeight (28));
     header.removeFromRight (8);
-    deltaBtn.setBounds (header.removeFromRight (150).withTrimmedTop (8).withHeight (28));
+    deltaNegBtn.setBounds (header.removeFromRight (110).withTrimmedTop (8).withHeight (28));
+    header.removeFromRight (6);
+    deltaPosBtn.setBounds (header.removeFromRight (110).withTrimmedTop (8).withHeight (28));
     a.removeFromTop (6);
     helpBar.setBounds (a.removeFromBottom (30));
     a.removeFromBottom (8);
