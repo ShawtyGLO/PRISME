@@ -106,13 +106,64 @@
   body.relief .seg { border:calc(3px * var(--k,1)) solid transparent; border-radius:14px; background:linear-gradient(180deg,#14171c,#38404a) border-box; box-shadow:0 1px 0 rgba(255,255,255,.08); }
   body.relief .seg button { border-right:1px solid var(--line); }
   body.relief .seg button:first-child { border-radius:11px 0 0 11px; } body.relief .seg button:last-child { border-radius:0 11px 11px 0; }
+
+  /* ================================================================
+     RELIEF DIFFUS : même principe (intérieur inchangé, contours seuls), mais la courbe externe est PROGRESSIVE :
+     anneau à dégradé étalé sur plusieurs paliers, plus épais, sans arêtes nettes ; ombres larges et floues ; halos concentriques très doux.
+     --d règle la douceur (1 = défaut).
+     ================================================================ */
+  body.relief.diffus .case {
+    --th:14px; border-radius:40px;
+    background:linear-gradient(var(--fill),var(--fill)) padding-box,
+               linear-gradient(180deg,#3b424c 0%,#2a3039 22%,#1b1f25 55%,#121519 100%) border-box;
+    box-shadow:
+      0 0 0 calc(2px*var(--d,1)) rgba(255,255,255,.025),
+      0 0 0 calc(5px*var(--d,1)) rgba(255,255,255,.015),
+      0 calc(18px*var(--d,1)) calc(46px*var(--d,1)) rgba(0,0,0,.60),
+      inset 0 calc(10px*var(--d,1)) calc(18px*var(--d,1)) rgba(0,0,0,.50),
+      inset 0 calc(-6px*var(--d,1)) calc(14px*var(--d,1)) rgba(255,255,255,.035);
+  }
+  body.relief.diffus .card, body.relief.diffus .tab {
+    --th:9px;
+    background:linear-gradient(var(--fill),var(--fill)) padding-box,
+               linear-gradient(180deg,#363d47 0%,#262c34 25%,#1a1e24 60%,#121519 100%) border-box;
+    box-shadow:
+      0 0 0 calc(2px*var(--d,1)) rgba(255,255,255,.02),
+      0 calc(8px*var(--d,1)) calc(22px*var(--d,1)) rgba(0,0,0,.50),
+      inset 0 calc(5px*var(--d,1)) calc(10px*var(--d,1)) rgba(0,0,0,.45),
+      inset 0 calc(-3px*var(--d,1)) calc(8px*var(--d,1)) rgba(255,255,255,.03);
+  }
+  body.relief.diffus .card { --th:11px; border-radius:30px; }
+  body.relief.diffus .tab { --th:8px; border-radius:24px; }
+  body.relief.diffus .tab.sel { box-shadow: 0 calc(8px*var(--d,1)) calc(22px*var(--d,1)) rgba(0,0,0,.50), inset 0 0 0 1px var(--c), inset 0 calc(5px*var(--d,1)) calc(10px*var(--d,1)) rgba(0,0,0,.45); }
+  body.relief.diffus .display {
+    --th:12px; border-radius:32px;
+    background:linear-gradient(var(--fill),var(--fill)) padding-box,
+               linear-gradient(180deg,#0e1115 0%,#171b21 35%,#262c34 75%,#363d47 100%) border-box;
+    box-shadow:
+      0 0 0 calc(2px*var(--d,1)) rgba(255,255,255,.02),
+      0 calc(-3px*var(--d,1)) calc(10px*var(--d,1)) rgba(0,0,0,.45),
+      inset 0 calc(10px*var(--d,1)) calc(20px*var(--d,1)) rgba(0,0,0,.65),
+      inset 0 calc(-4px*var(--d,1)) calc(10px*var(--d,1)) rgba(255,255,255,.035);
+  }
+  body.relief.diffus .btn, body.relief.diffus .pill, body.relief.diffus .type {
+    border-width:calc(4px*var(--k,1));
+    background:linear-gradient(var(--fill),var(--fill)) padding-box, linear-gradient(180deg,#323943 0%,#20252c 50%,#14171c 100%) border-box;
+    box-shadow: 0 calc(4px*var(--d,1)) calc(10px*var(--d,1)) rgba(0,0,0,.45), inset 0 calc(2px*var(--d,1)) calc(5px*var(--d,1)) rgba(0,0,0,.35);
+  }
+  body.relief.diffus .type.sel { box-shadow: 0 calc(4px*var(--d,1)) calc(10px*var(--d,1)) rgba(0,0,0,.45), inset 0 0 0 1px var(--c); }
+  body.relief.diffus .btn.on { background:linear-gradient(var(--fill),var(--fill)) padding-box, linear-gradient(180deg,#14171c 0%,#20252c 50%,#323943 100%) border-box;
+    box-shadow: inset 0 calc(3px*var(--d,1)) calc(6px*var(--d,1)) rgba(0,0,0,.5); }
+  body.relief.diffus .seg { border-width:calc(4px*var(--k,1)); border-radius:16px; background:linear-gradient(180deg,#14171c,#2c333c 60%,#323943) border-box; box-shadow:none; }
 </style>
+
 </head>
-<body class="relief">
+<body class="relief diffus">
 <div class="bar-choix">
   <b>Comparer :</b>
-  <div class="opt" id="mode"><button data-m="actuel">Actuel (v1.7)</button><button data-m="relief" class="sel">Contours en relief</button></div>
+  <div class="opt" id="mode"><button data-m="actuel">Actuel (v1.7)</button><button data-m="relief">Contours en relief</button><button data-m="diffus" class="sel">Relief diffus</button></div>
   <label>Épaisseur de la lunette <input type="range" id="th" min="2" max="9" step="0.5" value="4"></label>
+  <label>Douceur (mode diffus) <input type="range" id="dd" min="0.5" max="2.5" step="0.1" value="1"></label>
   <b>Maquette d'apparence uniquement : l'intérieur des cadres est identique dans les deux modes, seuls les contours changent.</b>
 </div>
 <div class="wrap">
@@ -142,7 +193,8 @@
 <script>
 // ---- bascule de comparaison
 const body=document.body;
-document.querySelectorAll("#mode button").forEach(b=> b.onclick=()=>{ body.classList.toggle("relief", b.dataset.m==="relief"); document.querySelectorAll("#mode button").forEach(x=>x.classList.toggle("sel",x===b)); resize(); });
+document.querySelectorAll("#mode button").forEach(b=> b.onclick=()=>{ body.classList.toggle("relief", b.dataset.m!=="actuel"); body.classList.toggle("diffus", b.dataset.m==="diffus"); document.querySelectorAll("#mode button").forEach(x=>x.classList.toggle("sel",x===b)); resize(); });
+document.getElementById("dd").oninput=e=>{ document.documentElement.style.setProperty("--d", e.target.value); };
 document.getElementById("th").oninput=e=>{ document.documentElement.style.setProperty("--k", e.target.value/4); };
 
 const TYPES = {
