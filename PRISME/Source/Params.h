@@ -77,6 +77,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "release"), 1 }, n + U8 ("relâchement"), rr, 150.0f));
     }
     layout.add (std::make_unique<juce::AudioParameterBool>  (P { "delta", 1 }, "Delta (ancien : equivaut a Delta + et Delta -)", false));
+    layout.add (std::make_unique<juce::AudioParameterBool>  (P { "sonie", 1 }, U8 ("Compensation de sonie (traité recalé sur la sonie du sec)"), false));
     layout.add (std::make_unique<juce::AudioParameterBool>  (P { "dpos", 1 }, U8 ("Delta + (ce qui est ajouté)"), false));
     layout.add (std::make_unique<juce::AudioParameterBool>  (P { "dneg", 1 }, U8 ("Delta − (ce qui est retiré)"), false));
     layout.add (std::make_unique<juce::AudioParameterBool>  (P { "bypass", 1 }, "Bypass", false));

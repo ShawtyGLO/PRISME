@@ -144,6 +144,11 @@ void PrismeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     counter.store (0);
     secL.init (0.0);
     secR.init (0.0);
+    sonie.prepare (sampleRate);
+    sonieMix.reset (sampleRate, 0.05);
+    sonieMix.setCurrentAndTargetValue (0.0f);
+    sonieWasOn = false;
+    sonieGainDb.store (0.0f);
     outGain.reset (sampleRate, 0.02);
     outGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (prismeParams::raw (apvts, "output")));
     fifo.reset();
@@ -288,7 +293,12 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     for (int b = 0; b < prismeParams::nBands; ++b) { solo[b] = prismeParams::raw (apvts, prismeParams::pid (b, "solo")) > 0.5f; anySolo |= solo[b]; }
     bypassMix.setTargetValue (prismeParams::raw (apvts, "bypass") > 0.5f ? 0.0f : 1.0f);
     const bool wetOn = analyserOn.load();
+    float lastSonieDb = 0.0f;
     outGain.setTargetValue (juce::Decibels::decibelsToGain (prismeParams::raw (apvts, "output")));
+    const bool sonieOn = prismeParams::raw (apvts, "sonie") > 0.5f;
+    if (sonieOn && ! sonieWasOn) sonie.reset();                                  // mesure repartie de zéro à l'activation
+    sonieWasOn = sonieOn;
+    sonieMix.setTargetValue (sonieOn ? 1.0f : 0.0f);
 
     for (int start = 0; start < total; start += cap)
     {
@@ -424,11 +434,25 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             filtres.avance();
             const double g = (double) outGain.getNextValue();
             const double bm = (double) bypassMix.getNextValue();
-            const double wL = anySolo ? soloL : (delta ? dsL : apL + sumL), wR = anySolo ? soloR : (delta ? dsR : apR + sumR);
+            double wL = anySolo ? soloL : (delta ? dsL : apL + sumL), wR = anySolo ? soloR : (delta ? dsR : apR + sumR);
+            const double mixS = (double) sonieMix.getNextValue();
+            if (sonieOn || mixS > 1.0e-4)                                        // compensation de sonie : le traité complet est recalé sur la sonie du sec (pas en delta / delta de bande)
+            {
+                double gdb = 0.0;
+                sonie.process (dryL, dryR, apL + sumL, apR + sumR, gdb);
+                if (! delta && ! anySolo)
+                {
+                    const double f = std::pow (10.0, gdb * mixS / 20.0);
+                    wL *= f;
+                    wR *= f;
+                }
+                lastSonieDb = (float) (gdb * mixS);
+            }
             bufL[(size_t) i] = bm * wL * g + (1.0 - bm) * dryL;                  // le niveau de sortie ne touche pas le signal contourné : A/B sans sortir du plugin
             bufR[(size_t) i] = bm * wR * g + (1.0 - bm) * dryR;
         }
 
+        sonieGainDb.store (lastSonieDb);
         if (wetOn)
             for (size_t b = 0; b < slots.size(); ++b)
             {

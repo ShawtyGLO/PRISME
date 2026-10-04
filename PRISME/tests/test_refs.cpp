@@ -3,6 +3,7 @@
 //   test_refs.exe [dossier_refs]        code de sortie ≠ 0 si un test échoue.
 #include "../Source/Dsp/Lift.h"
 #include "../Source/Dsp/Shape.h"
+#include "../Source/Dsp/Sonie.h"
 #include "../Source/Dsp/Exciter.h"
 #include "../Source/Dsp/ExciterV2.h"
 #include "../Source/Dsp/ExciterV3.h"
@@ -39,7 +40,7 @@ int main (int argc, char** argv)
     std::ifstream man (dir + "/manifest.txt");
     if (! man) { std::cout << "manifest introuvable dans " << dir << "\n"; return 2; }
     int total = 0, echecs = 0;
-    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0, pireEngine = 0, pireExc2 = 0, pireExc3 = 0;
+    double pireZone = 0, pireLift = 0, pireShape = 0, pireExc = 0, pireTame = 0, pireEngine = 0, pireExc2 = 0, pireExc3 = 0, pireSonie = 0;
     const double tolTame = 1e-7;                         // −140 dB ; le prototype calcule sa chaîne spectrale en float32 (voir Tame.h)
     std::string ligne;
     while (std::getline (man, ligne))
@@ -194,6 +195,27 @@ int main (int argc, char** argv)
             pireEngine = std::max (pireEngine, e);
             if (e > 1e-7) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
+        else if (type == "sonie")
+        {
+            const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");     // entrée : [secL, secR, trtL, trtR] ; sortie : [outL, outR, gain dB]
+            ++total;
+            if (xs.empty() || xs.size() / 4 != ref.size() / 3) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
+            const size_t n = xs.size() / 4;
+            Sonie so;
+            so.prepare (fs);
+            double crete = 0, e = 0, eg = 0;
+            for (size_t i = 0; i < n; ++i) crete = std::max (crete, std::max (std::abs (ref[3 * i]), std::abs (ref[3 * i + 1])));
+            for (size_t i = 0; i < n; ++i)
+            {
+                double gdb;
+                const double f = so.process (xs[4 * i], xs[4 * i + 1], xs[4 * i + 2], xs[4 * i + 3], gdb);
+                e = std::max ({ e, std::abs (xs[4 * i + 2] * f - ref[3 * i]), std::abs (xs[4 * i + 3] * f - ref[3 * i + 1]) });
+                eg = std::max (eg, std::abs (gdb - ref[3 * i + 2]));
+            }
+            e /= std::max (crete, 1e-30);
+            pireSonie = std::max (pireSonie, std::max (e, eg));
+            if (e > 1e-9 || eg > 1e-8) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << " ; gain " << eg << " dB\n"; }
+        }
         else if (type == "lift")
         {
             double g, am, rel;
@@ -220,7 +242,7 @@ int main (int argc, char** argv)
             if (e > 1e-9) { ++echecs; std::cout << "  FAIL " << nom << " écart relatif " << e << "\n"; }
         }
     }
-    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; exciter v2 : " << pireExc2 << " ; exciter v3 : " << pireExc3 << " ; tame : " << pireTame << " ; engine : " << pireEngine << " (écarts relatifs max)\n";
+    std::cout << "zone : écart max " << pireZone << " ; lift : " << pireLift << " ; shape : " << pireShape << " ; exciter : " << pireExc << " ; exciter v2 : " << pireExc2 << " ; exciter v3 : " << pireExc3 << " ; tame : " << pireTame << " ; engine : " << pireEngine << " ; sonie : " << pireSonie << " (écarts relatifs max)\n";
     // W01 : une bande NEUVE, préchauffée avec 2,5 s d historique, doit avoir le niveau de delta d'une bande vivante depuis le début
     {
         const auto m = lire (dir + "/music12.f64");

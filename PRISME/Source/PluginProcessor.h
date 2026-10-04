@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "Params.h"
+#include "Dsp/Sonie.h"
 
 /**
     PRISME — EQ dont chaque bande est un TYPE de traitement (Exciter, Tame, Shape, Lift), posée n'importe où sur le spectre.
@@ -103,6 +104,12 @@ private:
     std::array<Slot, prismeParams::nBands> slots;
     std::atomic<double> fsHz { 0.0 };
     prisme::Retard<prisme::Engine::latence> secL, secR;
+    prisme::Sonie sonie;                                         // compensation de sonie (paramètre « sonie »)
+    juce::SmoothedValue<float> sonieMix;
+    bool sonieWasOn = false;
+public:
+    std::atomic<float> sonieGainDb { 0.0f };                     // correction appliquée (dB), pour un futur affichage
+private:
     juce::SmoothedValue<float> outGain;
     juce::AbstractFifo fifo { 8192 };
     std::vector<float> fifoBuf = std::vector<float> (8192, 0.0f);

@@ -153,6 +153,19 @@ for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3), ("fi
                                             s.get("source", "auto"), s.get("width", 0.5), s.get("cible") or "transitoires", s.get("time_ms") or 0.0, s.get("sens", 0.85),
                                             s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5), s.get("purete", 0.0), int(s.get("lc_on", False)), s.get("lc_f", 20.0), s.get("lc_pente", 12), int(s.get("hc_on", False)), s.get("hc_f", 20000.0), s.get("hc_pente", 12))) + "\n")
     man.append(f"engine engine_{nom} {int(fs0)} x 0 0")
+# compensation de sonie : entrée [sec, traité] entrelacés, sortie [traité corrigé, gain dB]
+from prisme_sonie import sonie_band
+sec_s = np.concatenate([np.zeros((LAT_ENG, 2)), xstereo[:-LAT_ENG]])
+wet_s = traite(xstereo, int(fs0), config_type())
+for nom, fs_, sec_, wet_ in (("musique", int(fs0), sec_s, wet_s),
+                              ("silence_saut", 44100, np.concatenate([xstereo[:44100], np.zeros((30000, 2)), xstereo[44100:88200]]), None)):
+    if wet_ is None:
+        wet_ = sec_ * 1.7
+        wet_[60000:] *= 0.6
+    out_, g_ = sonie_band(sec_, wet_, fs_)
+    np.concatenate([sec_, wet_], axis=1).astype("<f8").tofile(os.path.join(OUT, f"sonie_{nom}.in.f64"))
+    np.concatenate([out_, g_[:, None]], axis=1).astype("<f8").tofile(os.path.join(OUT, f"sonie_{nom}.out.f64"))
+    man.append(f"sonie sonie_{nom} {fs_} x 0 0")
 for fs in (44100, 48000, 88200, 96000, 192000):
     for sh in ("bell", "highshelf", "lowshelf"):
         for f0, q in ((20.0, 0.3), (42.0, 0.71), (1000.0, 1.0), (9600.0, 12.0), (18000.0, 0.7)):
