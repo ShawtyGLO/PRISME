@@ -28,7 +28,7 @@ public:
     static constexpr int RA = 24, JK = 18, DEC = 32;
     static constexpr double QA = 14.0, QS = 20.0, threshDb = 4.5, ctx = 1.0;
 
-    void prepare (double fs_, Forme forme, double f0, double q, double gainDb, double width)
+    void prepare (double fs_, Forme forme, double f0, double q, double gainDb, double width, double zonePente = 1.0)
     {
         fs = fs_;
         sign = gainDb > 0 ? 1.0 : -1.0;
@@ -41,6 +41,8 @@ public:
         for (int k = 0; k < N; ++k) w[(size_t) k] = std::abs (response (zc, 2.0 * kPi * f[(size_t) k] / fs));
         for (int k = 0; k < N; ++k)                                  // l'analyse s'elargit a 4 octaves (contexte de la reference) ; l'action reste dans la zone d'origine
             if (f[(size_t) k] < zoneLo * 0.999 || f[(size_t) k] > zoneHi * 1.001) w[(size_t) k] = 0.0;
+        if (zonePente != 1.0)                                         // zone « raide » (option) : poids élevé à une puissance, flancs plus raides (2 : 12 dB/oct au lieu de 6)
+            for (int k = 0; k < N; ++k) w[(size_t) k] = std::pow (w[(size_t) k], zonePente);
         act.clear();
         for (int k = 0; k < N; ++k) if (w[(size_t) k] >= 0.02) act.push_back (k);
         ratio = (float) std::clamp (depth / 4.5, 1.0, 3.0);

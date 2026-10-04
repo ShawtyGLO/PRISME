@@ -68,6 +68,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "mode"), 1 }, n + "profil (Exciter)", modeNames(), 3));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "source"), 1 }, n + "source", sourceNames(), 0));
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "width"), 1 }, n + "largeur", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "zone"), 1 }, n + U8 ("zone (Tame) : normale / raide"), sa ({ "Normale", "Raide" }), 0));
         layout.add (std::make_unique<juce::AudioParameterChoice> (P { pid (b, "cible"), 1 }, n + "cible", cibleNames(), 0));
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "time"), 1 }, n + U8 ("durée"), juce::NormalisableRange<float> (5.0f, 200.0f, 1.0f), 30.0f));
         layout.add (std::make_unique<juce::AudioParameterFloat> (P { pid (b, "sens"), 1 }, n + U8 ("sensibilité"), juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.85f));
@@ -123,6 +124,7 @@ inline prisme::BandeSpec readSpec (juce::AudioProcessorValueTreeState& s, int b)
     sp.dens    = raw (s, pid (b, "purete"));                      // Exciter v3 : Pureté (champ historique « dens »)
     sp.drive   = driveFromKnob (raw (s, pid (b, "drive")));
     sp.width   = raw (s, pid (b, "width"));
+    sp.zonePente = juce::roundToInt (raw (s, pid (b, "zone"))) == 1 ? 2.0 : 1.0;
     sp.cible   = (prisme::Shape::Cible) juce::roundToInt (raw (s, pid (b, "cible")));
     sp.timeMs  = raw (s, pid (b, "time"));
     sp.sens    = raw (s, pid (b, "sens"));

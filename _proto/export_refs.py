@@ -113,6 +113,12 @@ for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44",
         y = tame_band(sig, fs, shape=sh, f0=f0, q=q, gain_db=g, width=wd, block=8192)
         dump(nom, sig, y)
         man.append(f"tame {nom} {fs} {sh} {f0} {q} {g} {wd}")
+for fs, nom_sig, sig in ((int(fs0), "mus", mus[:int(2 * fs0)]), (44100, "syn44", synth(44100)[:int(4 * 44100)])):         # zone « raide » (option, exposant 2)
+    for i, (sh, f0, q, g, wd) in enumerate((("bell", 120.0, 4.0, -9.0, 0.5), ("lowshelf", 150.0, 0.71, -6.0, 0.8), ("bell", 3000.0, 2.0, -9.0, 0.3))):
+        nom = f"tamezr_{nom_sig}_{i}"
+        y = tame_band(sig, fs, shape=sh, f0=f0, q=q, gain_db=g, width=wd, block=8192, zone_pente=2.0)
+        dump(nom, sig, y)
+        man.append(f"tame {nom} {fs} {sh} {f0} {q} {g} {wd} 2.0")
 from prisme_engine_stream import traite, LATENCE as LAT_ENG
 from prisme_filtres import applique
 from tests_engine import config as config_type

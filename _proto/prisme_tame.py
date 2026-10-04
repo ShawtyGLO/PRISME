@@ -80,7 +80,7 @@ def _grille(shape, f0, q, fs, ctx, RA=24):
 
 
 class Tame:
-    def __init__(self, fs, shape="bell", f0=3000.0, q=0.7, gain_db=-9.0, width=0.5, thresh_db=4.5, ratio=None, ctx=1.0, ra=None, interp=None, detection=None):
+    def __init__(self, fs, shape="bell", f0=3000.0, q=0.7, gain_db=-9.0, width=0.5, thresh_db=4.5, ratio=None, ctx=1.0, ra=None, interp=None, detection=None, zone_pente=1.0):
         RA = self.RA = RA_DEFAULT if ra is None else ra
         self.interp = INTERP_DEFAULT if interp is None else interp
         QA, QS, JK = self.QA, self.QS, self.JK = QA0 * RA / RA0, QS0 * RA / RA0, max(2, int(round(JK0 * RA / RA0)))
@@ -91,6 +91,7 @@ class Tame:
         self.w = np.abs(freqz(b, a, worN=2 * np.pi * f / fs)[1])
         lo0, hi0 = _zone(shape, f0, q, fs, ctx)
         self.w = np.where((f >= lo0 * 0.999) & (f <= hi0 * 1.001), self.w, 0.0)      # l'analyse s'élargit à 4 octaves (contexte de la référence), l'action reste dans la zone d'origine
+        self.w = self.w ** zone_pente                                      # zone « raide » (option) : poids élevé à une puissance → flancs plus raides (2 : 12 dB/oct au lieu de 6)
         self.act = np.where(self.w >= 0.02)[0]
         self.ratio = float(np.clip(self.depth / 4.5, 1.0, 3.0)) if ratio is None else ratio
         self.det = DET_DEFAULT if detection is None else detection
@@ -308,11 +309,11 @@ def tame_stereo(x, fs, block=8192, **kw):
 
 
 def tame_band(x, fs, shape="bell", f0=3000.0, q=0.7, gain_db=-9.0, width=0.5, thresh_db=4.5, ratio=None, ctx=1.0,
-              block=8192, diag=False, ra=None, interp=None, detection=None):
+              block=8192, diag=False, ra=None, interp=None, detection=None, zone_pente=1.0):
     """Tame bipolaire. gain_db < 0 : supprime les résonances ; > 0 : les réhausse. width : 0 large … 1 fin."""
     if gain_db == 0.0:
         return x.copy()
-    t = Tame(fs, shape, f0, q, gain_db, width, thresh_db, ratio, ctx, ra, interp, detection)
+    t = Tame(fs, shape, f0, q, gain_db, width, thresh_db, ratio, ctx, ra, interp, detection, zone_pente)
     y = np.empty(len(x))
     reds = []
     for i in range(0, len(x), block):

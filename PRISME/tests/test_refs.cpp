@@ -138,15 +138,16 @@ int main (int argc, char** argv)
         }
         else if (type == "tame")
         {
-            double g, wd;
-            is >> g >> wd;
+            double g, wd, zp = 1.0;
+            is >> g >> wd >> zp;                                              // zp : exposant de zone (facultatif, 1 par défaut)
+            if (! is) zp = 1.0;
             const auto xs = lire (dir + "/" + nom + ".in.f64"), ref = lire (dir + "/" + nom + ".out.f64");
             ++total;
             if (xs.empty() || xs.size() != ref.size()) { ++echecs; std::cout << "  FAIL " << nom << " fichiers illisibles\n"; continue; }
             double crete = 0, e = 0;
             for (double v : ref) crete = std::max (crete, std::abs (v));
             Tame t;
-            t.prepare (fs, forme (sh), f0, q, g, wd);
+            t.prepare (fs, forme (sh), f0, q, g, wd, zp);
             for (size_t i = 0; i < xs.size(); ++i) e = std::max (e, std::abs (t.process (xs[i]) - ref[i]));
             e /= std::max (crete, 1e-30);
             pireTame = std::max (pireTame, e);

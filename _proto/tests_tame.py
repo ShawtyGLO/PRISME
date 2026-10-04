@@ -220,6 +220,22 @@ def run():
             d = tiers(tame_band(real, fsr_, gain_db=g, width=1.0, **KW), fsr_, cent) - tiers(real, fsr_, cent)
             ok = (d.max() <= 0.5) if g < 0 else (d.min() >= -0.5)
             check("T16", f"musique : sens ({g:+.0f} dB)", f"extrême {d.max() if g < 0 else d.min():+.2f} dB", ok)
+    # T17 zone raide (option) : les raies à ±0,5 oct du centre sont bien moins touchées, le centre reste réduit
+    try:
+        fs17, n17 = 48000.0, int(48000 * DUR)
+        x17 = pink(n17, fs17, 2, 0.02)
+        tt = np.arange(n17) / fs17
+        raies = (60.0, 85.0, 120.0, 170.0, 240.0, 480.0)
+        for f in raies:
+            x17 = x17 + 0.02 * np.sin(2 * np.pi * f * tt)
+        yn = tame_band(x17, fs17, gain_db=-9.0, width=0.5, shape="bell", f0=120.0, q=4.0)
+        yr = tame_band(x17, fs17, gain_db=-9.0, width=0.5, shape="bell", f0=120.0, q=4.0, zone_pente=2.0)
+        rn = {f: -reduc(x17, yn, fs17, f) for f in raies}
+        rr = {f: -reduc(x17, yr, fs17, f) for f in raies}
+        ok17 = rr[120.0] >= rn[120.0] - 1.5 and rr[85.0] <= 0.5 * rn[85.0] and rr[170.0] <= 0.5 * rn[170.0] and rr[60.0] <= 0.3 * max(rn[60.0], 0.2) + 0.1 and rr[480.0] <= 0.1
+        check("T17", "zone raide : centre ≥ normal − 1,5 dB ; ±0,5 oct ≤ moitié du normal", "normal " + " ".join(f"{f:.0f}:{rn[f]:.1f}" for f in raies) + " | raide " + " ".join(f"{f:.0f}:{rr[f]:.1f}" for f in raies), ok17)
+    except TypeError:
+        print("  SKIP  T17  module sans zone_pente")
     nf = sum(1 for _, o in RESULTS if not o)
     print(f"\n{len(RESULTS) - nf}/{len(RESULTS)} réussis, {nf} échec(s)")
     return nf
