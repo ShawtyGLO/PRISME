@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISME — maquette des survols (filtres, autogain, largeur stéréo)</title>
+<style>
+  :root { --bg:#101215; --panel:#171a1f; --panel2:#1d2127; --line:#2a2f37; --txt:#e6e9ee; --mut:#8b93a1; --exc:#ff8a3d; --tam:#35d0c0; --sha:#a78bfa; --lif:#7ddc6a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif; padding:18px; max-width:1100px; margin:0 auto; }
+  h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:14px; margin:24px 0 6px; } p.n { color:var(--mut); margin:2px 0 10px; max-width:100ch; }
+  .app { background:#0d0f12; border:1px solid #20252c; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:12px; }
+  .hdr { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .hdr h4 { margin:0 12px 0 0; letter-spacing:.35em; font-size:16px; }
+  .sp { flex:1; }
+  .pill { background:var(--panel); border:1px solid var(--line); border-radius:99px; padding:5px 12px; color:var(--txt); font-size:12px; }
+  .pill.on { background:#2b3340; border-color:#4a5568; }
+  /* survols : une pastille ronde (icône) qui s'ouvre au survol */
+  .ouvre { display:inline-flex; align-items:center; gap:0; background:#232830; border:1px solid #4a5568; border-radius:99px; height:30px; min-width:30px; padding:0 7px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.45); overflow:hidden; transition:padding .18s ease; color:var(--txt); font-size:12px; white-space:nowrap; }
+  .ouvre .lib { max-width:0; opacity:0; overflow:hidden; transition:max-width .22s ease, opacity .18s ease, margin .22s ease; margin-left:0; }
+  .ouvre:hover { padding:0 14px 0 8px; } .ouvre:hover .lib, .ouvre.vue .lib { max-width:320px; opacity:1; margin-left:8px; }
+  .ouvre svg { flex:none; }
+  .ouvre.off { background:var(--panel); border-color:var(--line); color:var(--mut); }
+  .led { width:9px; height:9px; border-radius:50%; background:#3a414c; flex:none; } .on-ag .led { background:#7ddc6a; box-shadow:0 0 6px #7ddc6a; }
+  .val { color:var(--mut); font-variant-numeric:tabular-nums; margin-left:6px; }
+  .sl { display:flex; align-items:center; gap:8px; color:var(--mut); font-size:12px; transition:opacity .2s; }
+  .sl .rail { width:130px; height:4px; background:#3a414c; border-radius:3px; position:relative; } .sl .rail::after { content:""; position:absolute; left:50%; top:-4px; width:12px; height:12px; border-radius:50%; background:#cfd5de; margin-left:-6px; }
+  .sl.gris { opacity:.45; }
+  .disp { position:relative; height:200px; background:#12151a; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .disp .top { position:absolute; left:0; right:0; top:0; height:26px; background:#15181d; border-bottom:1px solid #20252c; }
+  .disp .tri { position:absolute; top:5px; width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-top:17px solid var(--tam); }
+  .disp .grille { position:absolute; inset:26px 0 0 0; background: linear-gradient(#22272e 1px, transparent 1px) 0 0/100% 38px, linear-gradient(90deg,#1c2128 1px, transparent 1px) 0 0/60px 100%; }
+  .disp > svg { position:absolute; left:0; right:0; bottom:0; top:26px; width:100%; height:calc(100% - 26px); }
+  .disp .autres { position:absolute; right:10px; bottom:9px; }
+  .fantome { stroke-dasharray:5 4; opacity:.5; }
+  /* carte */
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px 30px; }
+  h3 { margin:0 0 8px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--mut); font-weight:600; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { background:var(--panel2); color:var(--mut); border:0; padding:6px 10px; cursor:pointer; border-right:1px solid var(--line); font:inherit; }
+  .seg button:last-child { border-right:0; } .seg button.sel { background:var(--tam); color:#0b0d10; font-weight:600; }
+  .types { display:flex; gap:6px; } .types button { background:var(--panel2); border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:6px 10px; cursor:pointer; font:inherit; } .types button.sel { border-color:var(--tam); background:#232830; }
+  .knob { width:78px; text-align:center; } .knob .l { color:var(--mut); font-size:11px; margin-top:2px; } .knob .v { font-variant-numeric:tabular-nums; }
+  .knob.inactif { opacity:.35; }
+  .appar { transition:opacity .2s, max-height .25s; overflow:hidden; } .appar.cache { opacity:0; max-height:0; }
+  .note { color:var(--mut); font-size:11.5px; max-width:36ch; }
+</style>
+</head>
+<body>
+<h1>Maquette des survols — à valider avant toute modification du plugin</h1>
+<p class="n">Interactive : <b>passe la souris</b> sur les pastilles rondes, clique pour les activer. Rien n'est dans le plugin.</p>
+
+<div class="app">
+  <div class="hdr">
+    <h4>P R I S M E</h4><span class="sp"></span>
+    <span class="pill">Δ + ajouté</span><span class="pill">Δ − retiré</span><span class="pill on">Spectre</span>
+    <span class="sl" id="sortie">Sortie <span class="rail"></span> 0,0 dB</span>
+    <span class="ouvre off" id="ag" title="Autogain"><span class="led"></span><span class="lib">Autogain <span class="val" id="agv">−1,2 dB</span></span></span>
+  </div>
+
+  <div class="disp">
+    <div class="top"><div class="tri" style="left:70px"></div><div class="tri" style="left:780px;border-top-color:var(--exc)"></div></div><div class="grille"></div>
+    <svg viewBox="0 0 400 140" preserveAspectRatio="none">
+      <path d="M0 100 C80 100 100 40 170 45 C240 50 250 98 400 96" stroke="#35d0c0" fill="rgba(53,208,192,.16)" stroke-width="2"/>
+      <path id="fant" class="fantome" d="M0 4 L150 4 C170 4 175 30 200 60" stroke="#ff8a3d" fill="none" stroke-width="1.4"/>
+    </svg>
+    <span class="ouvre autres" id="autres" title="Filtres des autres bandes">
+      <svg id="oeil" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e6e9ee" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span class="lib" id="autresLib">Filtres des autres bandes : visibles</span>
+    </span>
+  </div>
+
+  <div class="card">
+    <div><h3>Type de traitement</h3><div class="types" id="types"><button data-t="tame" class="sel">Tame</button><button data-t="shape">Shape</button><button data-t="lift">Lift</button><button data-t="exciter">Exciter</button></div></div>
+    <div><h3>Canal</h3><div class="seg" id="canal"><button data-c="stereo" class="sel">Stéréo</button><button data-c="mid">Mid</button><button data-c="side">Side</button><button data-c="left">L</button><button data-c="right">R</button></div>
+      <div class="appar" id="ap"><div style="height:12px"></div>
+        <div class="knob" id="kn"><svg width="56" height="56"><path d="M12 44 A22 22 0 1 1 44 44" stroke="#2c323b" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M12 44 A22 22 0 0 1 28 6" stroke="#35d0c0" stroke-width="4" fill="none" stroke-linecap="round"/><line x1="28" y1="28" x2="28" y2="10" stroke="#e6e9ee" stroke-width="2" stroke-linecap="round"/></svg><div class="v">100 %</div><div class="l">Largeur stéréo</div></div>
+        <p class="note" id="knNote">Mode Stéréo : le Side de ce que la bande ajoute, de 0 % (mono, recentré) à 200 % (Side doublé). 100 % = inchangé.</p></div></div>
+    <div><h3>Position</h3><p class="note">Fréquence · Q · Gain (inchangés)</p></div>
+  </div>
+</div>
+
+<h2>Ce que montre cette maquette</h2>
+<p class="n"><b>Filtres des autres bandes</b> : une pastille ronde avec l'œil, toujours visible dans le coin bas droit de l'écran ; au survol elle s'ouvre et affiche « Filtres des autres bandes : visibles / masqués » ; un clic bascule (l'œil devient grisé quand ils sont masqués, et le filtre fantôme orange disparaît de l'écran).</p>
+<p class="n"><b>Autogain</b> : un petit « témoin » rond à côté de « Sortie » ; au survol il s'ouvre sur « Autogain −1,2 dB » (la correction appliquée) ; un clic l'active (le témoin s'allume, la valeur bouge) et grise le curseur Sortie (qui n'a pas de sens quand on veut l'égalité de sonie). Il stabilise la sonie en continu tant qu'il est actif.</p>
+<p class="n"><b>Largeur stéréo</b> : un bouton rotatif qui n'apparaît que lorsque le canal est Stéréo et le type Tame, Shape ou Lift (essaie : Mid, Side, Exciter le masquent ou l'inactivent, avec la raison dans l'infobulle).</p>
+
+<script>
+// filtres des autres bandes
+let vis = true;
+const autres = document.getElementById("autres"), lib = document.getElementById("autresLib"), fant = document.getElementById("fant"), oeil = document.getElementById("oeil");
+autres.onclick = () => { vis = !vis; lib.textContent = vis ? "Filtres des autres bandes : visibles" : "Filtres des autres bandes : masqués"; autres.classList.toggle("off", !vis); fant.style.display = vis ? "" : "none";
+  oeil.innerHTML = vis ? '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>' : '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><line x1="3" y1="21" x2="21" y2="3"/>'; };
+// autogain
+let ag = false, t0 = 0;
+const agEl = document.getElementById("ag"), agv = document.getElementById("agv"), sortie = document.getElementById("sortie");
+agEl.onclick = () => { ag = !ag; agEl.classList.toggle("off", !ag); agEl.classList.toggle("on-ag", ag); sortie.classList.toggle("gris", ag); if (!ag) agv.textContent = "inactif"; else agv.textContent = "−1,2 dB"; };
+agEl.classList.add("off"); agv.textContent = "inactif";
+setInterval(() => { if (ag) { t0 += 0.4; agv.textContent = (-1.2 + 0.25 * Math.sin(t0)).toFixed(1).replace(".", ",").replace("-", "−") + " dB"; } }, 400);
+// largeur stéréo : n'apparaît qu'en mode Stéréo (hors Exciter)
+let canal = "stereo", type = "tame";
+function maj() {
+  const ap = document.getElementById("ap"), kn = document.getElementById("kn"), note = document.getElementById("knNote");
+  const visible = canal === "stereo";
+  ap.classList.toggle("cache", !visible);
+  const exc = type === "exciter";
+  kn.classList.toggle("inactif", exc);
+  note.textContent = exc ? "L'Exciter ajoute un signal mono (source liée) : sans effet ici pour l'instant." : "Mode Stéréo : le Side de ce que la bande ajoute, de 0 % (mono, recentré) à 200 % (Side doublé). 100 % = inchangé.";
+}
+document.querySelectorAll("#canal button").forEach(b => b.onclick = () => { canal = b.dataset.c; document.querySelectorAll("#canal button").forEach(x => x.classList.toggle("sel", x === b)); maj(); });
+document.querySelectorAll("#types button").forEach(b => b.onclick = () => { type = b.dataset.t; document.querySelectorAll("#types button").forEach(x => x.classList.toggle("sel", x === b)); maj(); });
+maj();
+</script>
+</body>
+</html>
