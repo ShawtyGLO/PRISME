@@ -320,7 +320,7 @@ void CurveDisplay::paint (juce::Graphics& g)
         {
             if ((pass == 0) == (i == sel)) continue;                                 // autres d'abord, sélectionnée par-dessus
             if (i != sel && ! autres) continue;
-            if (! bands[i].on || (! filtreActif (i, "lc") && ! filtreActif (i, "hc"))) continue;
+            if (! filtreActif (i, "lc") && ! filtreActif (i, "hc")) continue;                    // les filtres s'affichent aussi quand le module est coupé (plus discrets)
             juce::Path fp;
             bool pn = false;
             for (int x = 0; x <= (int) w; x += 2)
@@ -330,7 +330,7 @@ void CurveDisplay::paint (juce::Graphics& g)
                 if (! pn) fp.startNewSubPath ((float) x, fyDb (db)); else fp.lineTo ((float) x, fyDb (db));
                 pn = true;
             }
-            const auto c = col::forType (bands[i].type);
+            const auto c = col::forType (bands[i].type).withMultipliedAlpha (bands[i].on ? 1.0f : 0.5f);
             if (i == sel)
             {
                 g.setColour (c);

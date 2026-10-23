@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISME — propositions : « autres filtres » et autogain</title>
+<style>
+  :root { --bg:#101215; --panel:#171a1f; --panel2:#1d2127; --line:#2a2f37; --txt:#e6e9ee; --mut:#8b93a1; --tam:#35d0c0; --exc:#ff8a3d; --sha:#a78bfa; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif; padding:18px; }
+  h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:14px; margin:26px 0 6px; color:var(--txt); }
+  p.n { color:var(--mut); margin:2px 0 10px; max-width:90ch; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:16px; }
+  .opt { background:#0d0f12; border:1px solid #20252c; border-radius:12px; padding:12px; }
+  .opt h3 { margin:0 0 8px; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--mut); }
+  .opt .eti { display:inline-block; background:#2b3340; color:var(--txt); border-radius:99px; padding:1px 9px; margin-right:8px; font-size:11px; letter-spacing:0; text-transform:none; }
+  .reco .eti { background:#35d0c0; color:#0b0d10; }
+  /* faux écran de courbe */
+  .disp { position:relative; height:190px; background:#12151a; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .disp .top { position:absolute; left:0; right:0; top:0; height:26px; background:#15181d; border-bottom:1px solid #20252c; }
+  .disp .tri { position:absolute; top:5px; width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-top:17px solid var(--tam); }
+  .disp .grille { position:absolute; inset:26px 0 0 0; background:
+      linear-gradient(#22272e 1px, transparent 1px) 0 0/100% 38px, linear-gradient(90deg,#1c2128 1px, transparent 1px) 0 0/60px 100%; }
+  .disp > svg { position:absolute; left:0; right:0; bottom:0; top:26px; width:100%; height:calc(100% - 26px); }
+  .disp .info { position:absolute; left:12px; bottom:8px; color:var(--mut); font-size:11px; }
+  /* A : pastille à fond, en bas à droite, plus grande */
+  .A { position:absolute; right:10px; bottom:9px; display:flex; align-items:center; gap:8px; background:#232830; border:1px solid #4a5568; border-radius:99px; padding:6px 14px 6px 10px; color:var(--txt); font-size:12px; box-shadow:0 2px 6px rgba(0,0,0,.45); }
+  .A .oeil { width:16px; height:16px; }
+  /* B : pastille dans l'en-tête de l'écran (hors de la zone des triangles) */
+  .head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .pill { background:var(--panel); border:1px solid var(--line); border-radius:99px; padding:5px 12px; color:var(--txt); font-size:12px; }
+  .pill.on { background:#2b3340; border-color:#4a5568; }
+  .pill small { color:var(--mut); }
+  /* C : icône seule, coin haut droit de l'écran */
+  .C { position:absolute; right:10px; top:36px; width:30px; height:30px; display:grid; place-items:center; background:#232830; border:1px solid #4a5568; border-radius:50%; box-shadow:0 2px 6px rgba(0,0,0,.45); }
+  /* en-tête simulé pour l'autogain */
+  .hdr { display:flex; align-items:center; gap:10px; background:var(--bg); border:1px solid #20252c; border-radius:10px; padding:10px 12px; flex-wrap:wrap; }
+  .hdr h4 { margin:0 12px 0 0; letter-spacing:.35em; font-size:15px; }
+  .sl { display:flex; align-items:center; gap:8px; color:var(--mut); font-size:12px; }
+  .sl .rail { width:130px; height:4px; background:#3a414c; border-radius:3px; position:relative; } .sl .rail::after { content:""; position:absolute; left:50%; top:-4px; width:12px; height:12px; border-radius:50%; background:#cfd5de; margin-left:-6px; }
+  .sl.gris .rail { opacity:.35; } .sl.gris { opacity:.6; }
+  .ag { display:flex; align-items:center; gap:7px; background:var(--panel); border:1px solid var(--line); border-radius:99px; padding:4px 11px; color:var(--txt); font-size:12px; }
+  .ag.on { background:#2b3340; border-color:#4a5568; }
+  .led { width:8px; height:8px; border-radius:50%; background:#3a414c; } .on .led { background:#7ddc6a; box-shadow:0 0 6px #7ddc6a; }
+  .ag b { color:var(--mut); font-weight:500; font-variant-numeric:tabular-nums; }
+  .sp { flex:1; }
+</style>
+</head>
+<body>
+<h1>Propositions — à valider avant toute modification du plugin</h1>
+<p class="n">Rien de ceci n'est dans le plugin. Même palette que l'interface actuelle. L'écran ci-dessous est un schéma (grille + une courbe), seuls le bouton et sa place comptent.</p>
+
+<h2>1 · Le bouton « autres filtres » (aujourd'hui : texte gris sans fond, en bas à droite de l'écran)</h2>
+<p class="n">Dans les trois cas le bouton reste <b>hors de la bande du haut</b> (là où glissent les triangles de filtre), pour ne pas gêner leur course.</p>
+<div class="grid">
+  <div class="opt reco"><h3><span class="eti">A · recommandé</span>Pastille à fond, plus grande</h3>
+    <div class="disp"><div class="top"><div class="tri" style="left:70px"></div><div class="tri" style="left:420px;border-top-color:var(--exc)"></div></div><div class="grille"></div>
+      <svg viewBox="0 0 400 140" preserveAspectRatio="none"><path d="M0 100 C80 100 100 40 170 45 C240 50 250 98 400 96" stroke="#35d0c0" fill="rgba(53,208,192,.16)" stroke-width="2"/></svg>
+      <div class="A"><svg class="oeil" viewBox="0 0 24 24" fill="none" stroke="#e6e9ee" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>Filtres des autres bandes : visibles</div></div>
+    <p class="n">Même emplacement que maintenant, mais avec fond, bordure, icône d'œil et ombre : on la voit tout de suite. L'œil barré = masqués.</p></div>
+  <div class="opt"><h3><span class="eti">B</span>Dans l'en-tête, à côté de « Spectre »</h3>
+    <div class="head"><span class="pill">Δ + ajouté</span><span class="pill">Δ − retiré</span><span class="pill on">Spectre</span><span class="pill on">Filtres : tous <small>(autres bandes)</small></span></div>
+    <div class="disp"><div class="top"><div class="tri" style="left:70px"></div><div class="tri" style="left:420px;border-top-color:var(--exc)"></div></div><div class="grille"></div>
+      <svg viewBox="0 0 400 140" preserveAspectRatio="none"><path d="M0 100 C80 100 100 40 170 45 C240 50 250 98 400 96" stroke="#35d0c0" fill="rgba(53,208,192,.16)" stroke-width="2"/></svg></div>
+    <p class="n">Rangé avec les autres options d'affichage : jamais caché par la courbe, mais plus éloigné de l'écran qu'il commande.</p></div>
+  <div class="opt"><h3><span class="eti">C</span>Icône seule, coin haut droit de l'écran</h3>
+    <div class="disp"><div class="top"><div class="tri" style="left:70px"></div><div class="tri" style="left:300px;border-top-color:var(--exc)"></div></div><div class="grille"></div>
+      <svg viewBox="0 0 400 140" preserveAspectRatio="none"><path d="M0 100 C80 100 100 40 170 45 C240 50 250 98 400 96" stroke="#35d0c0" fill="rgba(53,208,192,.16)" stroke-width="2"/></svg>
+      <div class="C"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e6e9ee" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></div></div>
+    <p class="n">Très discret et compact, mais sans texte : demande l'infobulle pour comprendre. Attention, le coin haut droit est aussi la course du triangle « coupe-haut » quand il est poussé loin.</p></div>
+</div>
+
+<h2>2 · L'autogain (A/B à sonie égale)</h2>
+<p class="n">Quand il est actif, le traité est recalé en continu sur la sonie du sec (mesure pondérée K, correction bornée à ±12 dB, gelée dans les silences). Le bouton montre la correction appliquée.</p>
+<div class="grid">
+  <div class="opt reco"><h3><span class="eti">1 · recommandé</span>Pastille à gauche de « Sortie », avec témoin et valeur</h3>
+    <div class="hdr"><h4>P R I S M E</h4><span class="sp"></span><span class="ag on"><span class="led"></span>Autogain <b>−1,2 dB</b></span><span class="sl gris">Sortie <span class="rail"></span> 0,0 dB</span></div>
+    <p class="n">Le curseur Sortie est grisé quand l'autogain est actif (ils ne sont pas compatibles : l'un cherche l'égalité de sonie, l'autre la change).</p></div>
+  <div class="opt"><h3><span class="eti">2</span>Pastille à côté de « Spectre » (options d'écoute)</h3>
+    <div class="hdr"><h4>P R I S M E</h4><span class="sp"></span><span class="pill">Δ +</span><span class="pill">Δ −</span><span class="pill on">Spectre</span><span class="ag"><span class="led"></span>Autogain</span><span class="sl">Sortie <span class="rail"></span> 0,0 dB</span></div>
+    <p class="n">Regroupé avec les outils d'écoute (delta, spectre) ; la valeur de correction apparaîtrait seulement au survol.</p></div>
+  <div class="opt"><h3><span class="eti">3</span>Intégré au curseur Sortie</h3>
+    <div class="hdr"><h4>P R I S M E</h4><span class="sp"></span><span class="sl">Sortie <span class="rail"></span> 0,0 dB <span class="ag on" style="padding:2px 9px"><span class="led"></span>Auto</span></span></div>
+    <p class="n">Plus compact : un petit « Auto » collé au curseur. Moins visible, et la correction n'est pas affichée.</p></div>
+</div>
+</body>
+</html>
