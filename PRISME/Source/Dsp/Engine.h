@@ -37,6 +37,7 @@ struct BandeSpec
     double drive = 2.5;                                     // « Harmoniques » : niveau normalisé à l'entrée de la courbe (0,3 doux … 6 dur)
     // Tame
     double width = 0.5;
+    double stWidth = 1.0;                                   // largeur stéréo (mode Stéréo, Tame / Shape / Lift) : Side du delta ×stWidth ; réglé en direct, hors de l'égalité
     double zonePente = 1.0;                                 // Tame : 1 = zone normale, 2 = zone « raide » (option)
     // Shape
     Shape::Cible cible = Shape::Cible::Transitoires;
@@ -66,6 +67,7 @@ public:
     void prepare (double fs, const BandeSpec& s)
     {
         spec = s;
+        stw = s.stWidth;
         n = (s.canal == Canal::Stereo && s.type != TypeBande::Exciter) ? 2 : 1;      // Exciter v2 : une seule chaîne (non-linéarité LIÉE : source = milieu)
         for (int i = 0; i < n; ++i)
         {
@@ -99,6 +101,7 @@ public:
     }
 
     void setLink (double l) { spec.link = l; }
+    void setStWidth (double w) { spec.stWidth = w; stw = w; }                  // largeur stéréo, en direct
     void setWidth (double wd)                                // Largeur du Tame, en direct
     {
         spec.width = wd;
@@ -135,6 +138,12 @@ public:
                 if (spec.type == TypeBande::Exciter) { const double d = delta (0, 0.5 * (L + R)); dL = dR = d; }      // Exciter : lié (milieu)
                 else if (spec.link > 0.0 && spec.type != TypeBande::Exciter) pair (L, R, dL, dR);
                 else { dL = delta (0, L); dR = delta (1, R); }
+                if (spec.type != TypeBande::Exciter && stw != 1.0)                // largeur stéréo de la bande : Side du delta × stw
+                {
+                    const double M = 0.5 * (dL + dR), S = 0.5 * (dL - dR) * stw;
+                    dL = M + S;
+                    dR = M - S;
+                }
                 break;
             case Canal::Mid:   { const double d = delta (0, 0.5 * (L + R)); dL = dR = d; break; }
             case Canal::Side:  { const double d = delta (0, 0.5 * (L - R)); dL = d; dR = -d; break; }
@@ -209,6 +218,7 @@ private:
     }
 
     BandeSpec spec;
+    double stw = 1.0;
     int n = 1;
     std::array<std::unique_ptr<ExciterV3>, 2> exc;
     std::array<std::unique_ptr<Tame>, 2> tame;

@@ -71,6 +71,10 @@ class EngineStream:
                     d = np.stack([dels[0].push(yL - L), dels[1].push(yR - R)], axis=1)
                 else:
                     d = np.stack([self._delta(spec, objs[0], dels[0], L), self._delta(spec, objs[1], dels[1], R)], axis=1)
+                stw = float(spec.get("st_width", 1.0))                 # largeur stéréo de la bande : Side du delta × stw (0 = mono, 2 = Side doublé)
+                if stw != 1.0:
+                    M, S = (d[:, 0] + d[:, 1]) / 2, (d[:, 0] - d[:, 1]) / 2 * stw
+                    d = np.stack([M + S, M - S], axis=1)
             elif canal == "mid":
                 dm = self._delta(spec, objs[0], dels[0], (L + R) / 2)
                 d = np.stack([dm, dm], axis=1)

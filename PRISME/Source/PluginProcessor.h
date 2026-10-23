@@ -82,6 +82,8 @@ private:
         double lastDens = 1.0;
         std::atomic<double> widthTarget { 0.5 };               // Largeur du Tame en direct
         double lastWidth = 0.5;
+        std::atomic<double> stwTarget { 1.0 };                 // largeur stéréo de la bande, en direct
+        double lastStw = 1.0;
         std::atomic<bool> needRebuild { false };
         // thread message
         prisme::BandeSpec msgStruct;

@@ -236,6 +236,8 @@ void PrismeProcessor::syncBands (bool immediate)
             s.lastDens = spec.dens;
             s.widthTarget.store (spec.width);
             s.lastWidth = spec.width;
+            s.stwTarget.store (spec.stWidth);
+            s.lastStw = spec.stWidth;
             s.msgStruct = structure;
             s.msgAlive = spec.actif();
             s.zeroSince = 0;
@@ -266,6 +268,7 @@ void PrismeProcessor::syncBands (bool immediate)
         s.linkTarget.store (spec.link);
         s.densTarget.store (spec.dens);
         s.widthTarget.store (spec.width);
+        s.stwTarget.store (spec.stWidth);
         if (! s.msgAlive || structure != s.msgStruct || s.needRebuild.exchange (false))
         {
             builder->request (b, spec);
@@ -360,6 +363,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                         s.lastDens = s.densTarget.load();
                         s.warm->setWidth (s.widthTarget.load());
                         s.lastWidth = s.widthTarget.load();
+                        s.warm->setStWidth (s.stwTarget.load());
+                        s.lastStw = s.stwTarget.load();
                         s.old = std::move (s.cur);
                         s.cur = std::move (s.warm);
                         s.fadePos = 0;
@@ -379,6 +384,8 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             if (s.cur && dn != s.lastDens) { s.cur->setDens (dn); s.lastDens = dn; }
             const double wd = s.widthTarget.load();
             if (s.cur && wd != s.lastWidth) { s.cur->setWidth (wd); s.lastWidth = wd; }
+            const double sw = s.stwTarget.load();
+            if (s.cur && sw != s.lastStw) { s.cur->setStWidth (sw); s.lastStw = sw; }
         }
 
         // ---- filtres de bande : réglages du bloc (bande active = présente et non coupée) ----

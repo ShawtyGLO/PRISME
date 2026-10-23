@@ -59,6 +59,22 @@ if __name__ == "__main__":
     fl = traite(x, fs, bl); hl = process(x, fs, bl)
     e7 = np.max(np.abs(fl[D:] - hl[:n - D])) / np.max(np.abs(hl))
     check("F07", "avec une bande Lift : équivalence flux / hors ligne, blocs, mono", f"écart {e7:.1e}", e7 < 1e-9 and np.max(np.abs(traite(x, fs, bl, block=500) - fl)) < 1e-9)
+    # F08 largeur stéréo : 0 → delta mono (Tame / Shape / Lift) ; 1 → inchangé ; 2 → Side doublé et Mid intact ; l'Exciter (delta mono) l'ignore
+    ok8, det8 = True, []
+    sec8 = np.concatenate([np.zeros((D, 2)), x[:n - D]])
+    for typ, kw in (("tame", dict(gain_db=-6.0, width=0.5)), ("shape", dict(gain_db=5.0)), ("lift", dict(gain_db=6.0, amount=70.0))):
+        base = dict(type=typ, shape="bell", f0=3000.0, q=0.7, canal="stereo", link=0.5, **kw)
+        d1 = traite(x, fs, [dict(base)]) - sec8
+        d0 = traite(x, fs, [dict(base, st_width=0.0)]) - sec8
+        d2 = traite(x, fs, [dict(base, st_width=2.0)]) - sec8
+        M1, S1 = (d1[:, 0] + d1[:, 1]) / 2, (d1[:, 0] - d1[:, 1]) / 2
+        bon = (np.max(np.abs(d0[:, 0] - d0[:, 1])) < 1e-12 and np.max(np.abs((d0[:, 0] + d0[:, 1]) / 2 - M1)) < 1e-12
+               and np.max(np.abs((d2[:, 0] - d2[:, 1]) / 2 - 2 * S1)) < 1e-12 and np.max(np.abs((d2[:, 0] + d2[:, 1]) / 2 - M1)) < 1e-12)
+        ok8 &= bool(bon)
+        det8.append(f"{typ}:{'ok' if bon else 'NON'}")
+    ex = dict(type="exciter", shape="bell", f0=3000.0, q=0.7, gain_db=5.0, canal="stereo")
+    ok8 &= bool(np.array_equal(traite(x, fs, [ex]), traite(x, fs, [dict(ex, st_width=0.3)])))
+    check("F08", "largeur stéréo : 0 = delta mono, 2 = Side doublé (Mid intact), Exciter indifférent", " ".join(det8) + " exciter:ok" if ok8 else " ".join(det8), ok8)
     print(f"  INFO  F06  coût : {dt:.1f} s pour {n / fs:.0f} s de stéréo = {dt / (n / fs):.2f}× le temps réel (numpy, blocs de 8192)")
     nf = sum(1 for o in RES if not o)
     print(f"\n{len(RES) - nf}/{len(RES)} réussis, {nf} échec(s)")

@@ -142,7 +142,13 @@ cfg4[0].update(lc_on=True, lc_f=40.0, lc_pente=24)
 cfg4[1].update(hc_on=True, hc_f=3000.0, hc_pente=12)
 cfg4[2].update(lc_on=True, lc_f=300.0, lc_pente=12, hc_on=True, hc_f=2500.0, hc_pente=24)
 cfg4[4].update(lc_on=True, lc_f=6000.0, lc_pente=24, hc_on=True, hc_f=15000.0, hc_pente=12)
-for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3), ("filtres", cfg4)):
+cfg5 = config_type()
+cfg5[0].update(type="tame", gain_db=-6.0, canal="stereo", link=0.5, st_width=0.0)
+cfg5[1].update(type="lift", gain_db=5.0, amount=80.0, canal="stereo", link=0.3, st_width=2.0)
+cfg5[2].update(type="shape", gain_db=4.0, canal="stereo", link=0.0, st_width=0.4)
+cfg5[3].update(type="tame", gain_db=-4.0, canal="stereo", link=1.0, st_width=1.6)
+cfg5[4].update(type="exciter", gain_db=5.0, canal="stereo", st_width=0.3)        # l'Exciter (delta mono) ignore le curseur
+for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3), ("filtres", cfg4), ("largeur", cfg5)):
     y = traite(xstereo, int(fs0), cfg)
     filt = {i: [("lc", s["lc_f"], s["lc_pente"]) if s.get("lc_on") else None, ("hc", s["hc_f"], s["hc_pente"]) if s.get("hc_on") else None]
             for i, s in enumerate(cfg) if s.get("on", True) and s["gain_db"] != 0.0 and (s.get("lc_on") or s.get("hc_on"))}
@@ -157,7 +163,7 @@ for nom, cfg in (("type", config_type()), ("variee", cfg2), ("liee", cfg3), ("fi
         for s in cfg:
             f.write(" ".join(str(v) for v in (int(s.get("on", True)), s["type"], s["shape"], s["f0"], s["q"], s["gain_db"], s.get("canal", "stereo"), s.get("profil", "mordant_chaud"),
                                             s.get("source", "auto"), s.get("width", 0.5), s.get("cible") or "transitoires", s.get("time_ms") or 0.0, s.get("sens", 0.85),
-                                            s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5), s.get("purete", 0.0), int(s.get("lc_on", False)), s.get("lc_f", 20.0), s.get("lc_pente", 12), int(s.get("hc_on", False)), s.get("hc_f", 20000.0), s.get("hc_pente", 12))) + "\n")
+                                            s.get("amount", 50.0), s.get("release_ms", 150.0), s.get("link", 0.5), s.get("purete", 0.0), int(s.get("lc_on", False)), s.get("lc_f", 20.0), s.get("lc_pente", 12), int(s.get("hc_on", False)), s.get("hc_f", 20000.0), s.get("hc_pente", 12), s.get("st_width", 1.0))) + "\n")
     man.append(f"engine engine_{nom} {int(fs0)} x 0 0")
 # compensation de sonie : entrée [sec, traité] entrelacés, sortie [traité corrigé, gain dB]
 from prisme_sonie import sonie_band
