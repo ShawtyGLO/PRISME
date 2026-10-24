@@ -297,7 +297,7 @@ void PrismeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     bypassMix.setTargetValue (prismeParams::raw (apvts, "bypass") > 0.5f ? 0.0f : 1.0f);
     const bool wetOn = analyserOn.load();
     float lastSonieDb = 0.0f;
-    outGain.setTargetValue (juce::Decibels::decibelsToGain (prismeParams::raw (apvts, "output")));
+    outGain.setTargetValue (prismeParams::raw (apvts, "sonie") > 0.5f ? 1.0f : juce::Decibels::decibelsToGain (prismeParams::raw (apvts, "output")));      // autogain actif : Sortie ignoré
     const bool sonieOn = prismeParams::raw (apvts, "sonie") > 0.5f;
     if (sonieOn && ! sonieWasOn) sonie.reset();                                  // mesure repartie de zéro à l'activation
     sonieWasOn = sonieOn;

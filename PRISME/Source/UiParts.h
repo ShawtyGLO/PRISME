@@ -299,4 +299,59 @@ private:
     int index = 0;
     std::unique_ptr<juce::ParameterAttachment> attachment;
 };
+
+// Pastille ronde qui s'ouvre au survol et affiche son libellé (maquette « survol » validée) ; cliquable ; seule la zone dessinée reçoit la souris.
+class PastilleSurvol : public juce::Component, private juce::Timer
+{
+public:
+    std::function<void (juce::Graphics&, juce::Rectangle<float>, bool)> icone;      // dessine l'icône dans un carré de 16 px ; bool = état allumé
+    std::function<juce::String()> libelle;                                          // texte affiché une fois ouverte
+    std::function<bool()> actif;                                                    // état allumé (fond plus clair)
+    std::function<void()> clic;
+
+    bool hitTest (int x, int y) override { return rectCourant().contains ((float) x, (float) y); }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto r = rectCourant();
+        const bool on = actif ? actif() : true;
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (r.translated (0.0f, 1.5f), r.getHeight() / 2.0f);
+        g.setColour (on ? juce::Colour (0xff232830) : col::panel);
+        g.fillRoundedRectangle (r, r.getHeight() / 2.0f);
+        g.setColour (on ? juce::Colour (0xff4a5568) : col::line);
+        g.drawRoundedRectangle (r.reduced (0.5f), r.getHeight() / 2.0f, 1.0f);
+        if (icone) icone (g, { r.getX() + 7.0f, r.getCentreY() - 8.0f, 16.0f, 16.0f }, on);
+        if (ouv > 0.35f && libelle)
+        {
+            g.setColour ((on ? col::txt : col::mut).withAlpha (juce::jlimit (0.0f, 1.0f, (ouv - 0.35f) / 0.65f)));
+            g.setFont (12.0f);
+            g.drawText (libelle(), juce::Rectangle<float> (r.getX() + 31.0f, r.getY(), r.getWidth() - 31.0f, r.getHeight()), juce::Justification::centredLeft);
+        }
+    }
+
+    void mouseEnter (const juce::MouseEvent&) override { cible = 1.0f; startTimerHz (60); }
+    void mouseExit (const juce::MouseEvent&) override { cible = 0.0f; startTimerHz (60); }
+    void mouseUp (const juce::MouseEvent& e) override { if (e.mouseWasClicked() && rectCourant().contains (e.position) && clic) { clic(); repaint(); } }
+
+private:
+    float largeurOuverte() const
+    {
+        const auto t = libelle ? libelle() : juce::String();
+        return 31.0f + (float) textWidth (juce::Font (juce::FontOptions (12.0f)), t) + 14.0f;
+    }
+    juce::Rectangle<float> rectCourant() const
+    {
+        const float w = 30.0f + (largeurOuverte() - 30.0f) * ouv;
+        return { (float) getWidth() - w, ((float) getHeight() - 30.0f) / 2.0f, w, 30.0f };      // ancrée à droite : elle s'ouvre vers la gauche
+    }
+    void timerCallback() override
+    {
+        ouv += (cible - ouv) * 0.35f;
+        if (std::abs (cible - ouv) < 0.01f) { ouv = cible; stopTimer(); }
+        repaint();
+    }
+    float ouv = 0.0f, cible = 0.0f;
+};
+
 }

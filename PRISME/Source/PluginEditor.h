@@ -13,6 +13,7 @@ public:
     ~CurveDisplay() override { stopTimer(); proc.setAnalyserActive (false); }
 
     void paint (juce::Graphics&) override;
+    void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
@@ -35,7 +36,7 @@ private:
     float effectif (int band, int shape, float f0, float q, float gain, float f) const;   // effet de la bande, filtres compris
     float fyDb (float db) const;
     int triangleAt (juce::Point<int> p) const;                 // 0 coupe-bas, 1 coupe-haut, −1 aucun
-    juce::Rectangle<int> autresRect() const;
+    prismeUi::PastilleSurvol pastilleAutres;                   // « filtres des autres bandes » : œil, s'ouvre au survol
     void setFiltre (int k, bool on, float f);
     void setParam (const juce::String& id, float denormalised, bool gesture);
 
@@ -186,6 +187,7 @@ private:
     HelpBar helpBar;
     juce::Slider scaleSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> scaleAttach;
+    prismeUi::PastilleSurvol autogainPill;                     // autogain : témoin, s'ouvre au survol sur « Autogain −x,x dB »
     prismeUi::PillButton deltaPosBtn { U8 ("Δ +  ajouté"), U8 ("Δ +  ajouté") }, deltaNegBtn { U8 ("Δ −  retiré"), U8 ("Δ −  retiré") }, specBtn { "Spectre", "Spectre" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaPosAttach, deltaNegAttach;
     juce::Slider outSlider;

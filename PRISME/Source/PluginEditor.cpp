@@ -34,6 +34,23 @@ static void saveWidth (int w)
 CurveDisplay::CurveDisplay (PrismeProcessor& p, std::function<int()> getSel, std::function<void (int)> setSel)
     : proc (p), selGet (std::move (getSel)), selSet (std::move (setSel))
 {
+    pastilleAutres.icone = [] (juce::Graphics& g, juce::Rectangle<float> r, bool on)          // œil (barré quand les filtres des autres bandes sont masqués)
+    {
+        const float cx = r.getCentreX(), cy = r.getCentreY();
+        juce::Path oeil;
+        oeil.startNewSubPath (cx - 8.0f, cy);
+        oeil.quadraticTo (cx, cy - 9.0f, cx + 8.0f, cy);
+        oeil.quadraticTo (cx, cy + 9.0f, cx - 8.0f, cy);
+        g.setColour (on ? col::txt : col::mut);
+        g.strokePath (oeil, juce::PathStrokeType (1.6f));
+        g.drawEllipse (cx - 2.6f, cy - 2.6f, 5.2f, 5.2f, 1.6f);
+        if (! on) g.drawLine (cx - 7.0f, cy + 8.0f, cx + 7.0f, cy - 8.0f, 1.6f);
+    };
+    pastilleAutres.actif = [this] { return (bool) proc.apvts.state.getProperty ("filtresAutres", true); };
+    pastilleAutres.libelle = [this] { return (bool) proc.apvts.state.getProperty ("filtresAutres", true) ? U8 ("Filtres des autres bandes : visibles") : U8 ("Filtres des autres bandes : masqués"); };
+    pastilleAutres.clic = [this] { proc.apvts.state.setProperty ("filtresAutres", ! (bool) proc.apvts.state.getProperty ("filtresAutres", true), nullptr); repaint(); };
+    aide (pastilleAutres, U8 ("Clic : afficher (en pointillés) ou masquer les filtres des autres bandes."));
+    addAndMakeVisible (pastilleAutres);
     proc.setAnalyserActive (true);
     startTimerHz (30);
 }
@@ -82,8 +99,6 @@ float CurveDisplay::effectif (int b, int shape, float f0, float q, float gain, f
     return 20.0f * std::log10 (juce::jmax (1e-6f, 1.0f + a * magFiltre (b, f)));
 }
 
-// Hors de la zone des triangles de filtres (bande du haut) : un bouton posé sur leur course les rendrait inatteignables.
-juce::Rectangle<int> CurveDisplay::autresRect() const { return { getWidth() - 190, getHeight() - 34, 184, 16 }; }
 
 int CurveDisplay::triangleAt (juce::Point<int> p) const
 {
@@ -121,6 +136,11 @@ void CurveDisplay::setParam (const juce::String& id, float v, bool gesture)
         p->setValueNotifyingHost (p->convertTo0to1 (v));
         if (gesture) p->endChangeGesture();
     }
+}
+
+void CurveDisplay::resized()
+{
+    pastilleAutres.setBounds (getWidth() - 10 - 330, getHeight() - 9 - 30, 330, 30);          // coin bas droit : hors de la bande des triangles
 }
 
 void CurveDisplay::timerCallback()
@@ -379,9 +399,6 @@ void CurveDisplay::paint (juce::Graphics& g)
         g.setColour (hcAct ? c : col::mut);
         g.drawText (hcOn ? fmtFreq (pp::raw (proc.apvts, pp::pid (sel, "hc_f"))) + U8 (" · ") + pente ("hc_pente") + " dB/oct" : U8 ("coupe-haut"),
                     (int) juce::jmax (xr - 155.0f, 10.0f), 8, 140, 14, juce::Justification::right);
-        g.setColour (col::mut.withAlpha (0.8f));
-        g.setFont (10.0f);
-        g.drawText (autres ? U8 ("autres filtres : visibles") : U8 ("autres filtres : masqués"), autresRect(), juce::Justification::centred);
     }
 
     for (int i = 0; i < pp::nBands; ++i)
@@ -413,7 +430,6 @@ void CurveDisplay::paint (juce::Graphics& g)
 
 juce::String CurveDisplay::helpAt (juce::Point<int> p) const
 {
-    if (autresRect().contains (p)) return U8 ("Clic : afficher (en pointillés) ou masquer les filtres des autres bandes.");
     const int t = triangleAt (p);
     if (t >= 0) return (t == 0 ? U8 ("Coupe-bas") : U8 ("Coupe-haut")) + U8 (" de la bande sélectionnée (sur le signal qu'elle ajoute) : clic = contourner / remettre (pour comparer en A/B), glisser = fréquence, molette ou clic droit = pente 12 / 24 dB/oct, double-clic ou pousser contre le bord = désactiver.");
     const auto ord = pp::bandOrder (proc.apvts);
@@ -429,12 +445,6 @@ juce::String CurveDisplay::helpAt (juce::Point<int> p) const
 
 void CurveDisplay::mouseDown (const juce::MouseEvent& e)
 {
-    if (autresRect().contains (e.getPosition()))
-    {
-        proc.apvts.state.setProperty ("filtresAutres", ! (bool) proc.apvts.state.getProperty ("filtresAutres", true), nullptr);
-        repaint();
-        return;
-    }
     const int t = triangleAt (e.getPosition());
     if (t >= 0)
     {
@@ -823,6 +833,35 @@ PrismeEditor::PrismeEditor (PrismeProcessor& p)
     for (auto* c : std::initializer_list<juce::Component*> { &display, &tabs, &card, &deltaPosBtn, &deltaNegBtn, &specBtn, &outSlider, &scaleSlider, &helpBar })
         content.addAndMakeVisible (c);
     content.addMouseListener (&helpBar, true);
+    content.addAndMakeVisible (autogainPill);
+    autogainPill.icone = [] (juce::Graphics& g, juce::Rectangle<float> r, bool on)             // témoin rond (vert allumé quand l'autogain est actif)
+    {
+        const auto c = r.getCentre();
+        if (on)
+        {
+            for (int i = 3; i >= 1; --i) { g.setColour (juce::Colour (0xff7ddc6a).withAlpha (0.10f)); g.fillEllipse (c.x - 4.5f - (float) i * 1.4f, c.y - 4.5f - (float) i * 1.4f, 9.0f + (float) i * 2.8f, 9.0f + (float) i * 2.8f); }
+            g.setColour (juce::Colour (0xff7ddc6a));
+        }
+        else g.setColour (juce::Colour (0xff3a414c));
+        g.fillEllipse (c.x - 4.5f, c.y - 4.5f, 9.0f, 9.0f);
+    };
+    autogainPill.actif = [this] { return pp::raw (proc.apvts, "sonie") > 0.5f; };
+    autogainPill.libelle = [this]
+    {
+        if (pp::raw (proc.apvts, "sonie") < 0.5f) return U8 ("Autogain : inactif");
+        const float g = proc.sonieGainDb.load();
+        return U8 ("Autogain  ") + (g > 0.0f ? juce::String ("+") : juce::String()) + juce::String (g, 1).replace ("-", U8 ("−")) + " dB";
+    };
+    autogainPill.clic = [this]
+    {
+        if (auto* p = proc.apvts.getParameter ("sonie"))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (pp::raw (proc.apvts, "sonie") > 0.5f ? 0.0f : 1.0f);
+            p->endChangeGesture();
+        }
+    };
+    aide (autogainPill, U8 ("Autogain : recale en continu le signal traité sur la sonie du signal d'entrée, pour comparer (bypass) à volume égal. Le curseur Sortie est alors inactif. Cliquer pour activer ou couper."));
     deltaPosAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "dpos", deltaPosBtn);
     deltaNegAttach = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "dneg", deltaNegBtn);
     specBtn.setToggleState (true, juce::dontSendNotification);
@@ -905,6 +944,9 @@ void PrismeEditor::timerCallback()
     lastUiWidth = uiWidth;
     tabs.repaint();
     content.repaint (0, 0, 260, 50);
+    const bool ag = pp::raw (proc.apvts, "sonie") > 0.5f;                                    // Sortie grisé quand l'autogain est actif
+    if (outSlider.isEnabled() == ag) { outSlider.setEnabled (! ag); outSlider.setAlpha (ag ? 0.45f : 1.0f); }
+    autogainPill.repaint();
 }
 
 void PrismeEditor::paint (juce::Graphics& g)
@@ -918,7 +960,8 @@ void PrismeEditor::layoutContent()
     auto a = juce::Rectangle<int> (0, 0, baseW, baseH).reduced (16);
     auto header = a.removeFromTop (44);
     outSlider.setBounds (header.removeFromRight (190).withTrimmedTop (10).withHeight (26));
-    header.removeFromRight (56);
+    autogainPill.setBounds (outSlider.getX() - 50 - 320, outSlider.getY() - 2, 320, 30);        // à gauche de « Sortie » ; s'ouvre vers la gauche
+    header.removeFromRight (56 + 38);                                                          // place de la pastille repliée (30 px) entre l'Intensité et « Sortie »
     scaleSlider.setBounds (header.removeFromRight (190).withTrimmedTop (10).withHeight (26));
     header.removeFromRight (80);
     specBtn.setBounds (header.removeFromRight (90).withTrimmedTop (8).withHeight (28));
