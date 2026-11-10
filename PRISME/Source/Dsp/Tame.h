@@ -81,6 +81,7 @@ public:
         for (auto* v : { &Lf, &Lp, &Ls, &mo, &mi, &refv, &epv, &redf, &redm, &redu, &tmpf }) v->assign ((size_t) N, 0.0f);
         for (auto* v : { &redD, &SD, &lastRed, &lastS, &ef, &es, &zra, &zrr, &Sacc }) v->assign ((size_t) N, 0.0);
         line.assign ((size_t) N + 400, 0.0);
+        for (auto* v : { &vhExt, &vhG, &vhD }) v->assign ((size_t) N + 2 * (2 * RA + 4), 0.0f);      // tampons du maxFilter O(N) (taille max : 2*nP+3 <= 2*RA+3)
         lgc.assign ((size_t) N, 0.0);                             // v4 : abscisse en octaves, centree
         double mlg = 0.0;
         for (int k = 0; k < N; ++k) { lgc[(size_t) k] = std::log2 (f[(size_t) k] / 1000.0); mlg += lgc[(size_t) k]; }
@@ -262,15 +263,17 @@ private:
     }
 
     // scipy.ndimage.maximum_filter1d, mode='nearest', fenêtre centrée impaire
-    void maxFilter (const std::vector<float>& in, std::vector<float>& out, int size) const
+    // Fenetre glissante centree (mode 'nearest') en O(N) par l'algorithme de van Herk / Gil-Werman : prefixe et suffixe de max par blocs de `size`.
+    // Resultat identique a la version naive (le max de flottants n'arrondit pas). Le signal est etendu de h valeurs a chaque bord (= 'nearest').
+    void maxFilter (const std::vector<float>& in, std::vector<float>& out, int size)
     {
-        const int h = size / 2;
-        for (int k = 0; k < N; ++k)
-        {
-            float m = in[(size_t) std::clamp (k - h, 0, N - 1)];
-            for (int d = -h + 1; d <= h; ++d) m = std::max (m, in[(size_t) std::clamp (k + d, 0, N - 1)]);
-            out[(size_t) k] = m;
-        }
+        const int h = size / 2, M = N + 2 * h;
+        float* e = vhExt.data(); float* g = vhG.data(); float* d = vhD.data();
+        for (int i = 0; i < M; ++i) e[i] = in[(size_t) std::clamp (i - h, 0, N - 1)];
+        for (int i = 0; i < M; ++i) g[i] = (i % size == 0) ? e[i] : std::max (g[i - 1], e[i]);
+        for (int i = M - 1; i >= 0; --i) d[i] = (i == M - 1 || (i + 1) % size == 0) ? e[i] : std::max (d[i + 1], e[i]);
+        for (int k = 0; k < N; ++k)                                     // fenetre [k, k + size - 1] dans e  (= [k - h, k + h] dans in)
+            out[(size_t) k] = std::max (d[k], g[k + size - 1]);
     }
 
     // scipy.ndimage.uniform_filter1d, mode='nearest' : somme glissante en double, sortie arrondie en float32
@@ -321,14 +324,30 @@ public:
         for (int k = 0; k < N; ++k) detr[(size_t) k] = lt[(size_t) k] - lgc[(size_t) k] * pente;
         const int h = sizeV4 / 2, rang = (int) ((double) sizeV4 * 15.0 / 100.0);
         const bool recalc = ((nLt - 1) % 16) == 0;                 // courbe recalculée toutes les 16 trames décimées (≈ 10 ms), tenue entre deux : elle suit un spectre à τ 3 s
-        for (int k = 0; k < N; ++k)
+        if (recalc)                                              // percentile glissant : fenetre triee maintenue (meme resultat exact que nth_element sur chaque fenetre)
         {
-            if (recalc)
+            auto src = [&] (int i) { return detr[(size_t) std::clamp (i, 0, N - 1)]; };
+            for (int d = -h; d <= h; ++d) tri[(size_t) (d + h)] = src (d);          // fenetre de k = 0
+            std::sort (tri.begin(), tri.begin() + sizeV4);
+            for (int k = 0; k < N; ++k)
             {
-                for (int d = -h; d <= h; ++d) tri[(size_t) (d + h)] = detr[(size_t) std::clamp (k + d, 0, N - 1)];
-                std::nth_element (tri.begin(), tri.begin() + rang, tri.begin() + sizeV4);
+                if (k > 0)
+                {
+                    const double out = src (k - 1 - h), in = src (k + h);        // sort la valeur la plus ancienne, entre la nouvelle
+                    if (out != in)
+                    {
+                        auto it = std::lower_bound (tri.begin(), tri.begin() + sizeV4, out);
+                        std::move (it + 1, tri.begin() + sizeV4, it);              // retire `out` (present : la fenetre est exactement celle de k-1)
+                        auto pos = std::lower_bound (tri.begin(), tri.begin() + sizeV4 - 1, in);
+                        std::move_backward (pos, tri.begin() + sizeV4 - 1, tri.begin() + sizeV4);
+                        *pos = in;
+                    }
+                }
                 courbeC[(size_t) k] = tri[(size_t) rang] + lgc[(size_t) k] * pente;
             }
+        }
+        for (int k = 0; k < N; ++k)
+        {
             courbe[(size_t) k] = nLt == 1 ? courbeC[(size_t) k] : aCs * courbe[(size_t) k] + (1.0 - aCs) * courbeC[(size_t) k];      // lissée (τ 20 ms)
             diffv[(size_t) k] = Ltd[(size_t) k] - lt[(size_t) k];
         }
@@ -401,6 +420,6 @@ private:
     std::vector<int> act;
     std::vector<double> aB0, aB1, aB2, aA1, aA2, aZ1, aZ2, aOmCf, aOmCs;          // analyse : N biquads + enveloppes (tableaux séparés → vectorisable)
     std::vector<double> sB0, sB1, sB2, sA1, sA2, sZ1, sZ2, term;                    // synthèse : bandes actives
-    std::vector<float> Lf, Lp, Ls, mo, mi, refv, epv, redf, redm, redu, tmpf;
+    std::vector<float> Lf, Lp, Ls, mo, mi, refv, epv, redf, redm, redu, tmpf, vhExt, vhG, vhD;
 };
 }

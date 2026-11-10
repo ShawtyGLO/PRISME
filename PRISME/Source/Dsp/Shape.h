@@ -33,13 +33,15 @@ public:
         }
         K = (int) fb.size();
         const double qb = 1.0 / (std::pow (2.0, 1.0 / (2.0 * perOct)) - std::pow (2.0, -1.0 / (2.0 * perOct)));
-        bp.assign ((size_t) K, Biquad());
+        for (auto* v : { &bB0, &bB1, &bB2, &bA1, &bA2, &bZ1, &bZ2, &omCe }) v->assign ((size_t) K, 0.0);
         ce.assign ((size_t) K, 0.0);
         ef.assign ((size_t) K, 0.0);
         for (int k = 0; k < K; ++k)
         {
-            bp[(size_t) k].set (rbjBandpass0dB (fs, fb[(size_t) k], qb));
+            const auto c = rbjBandpass0dB (fs, fb[(size_t) k], qb);
+            bB0[(size_t) k] = c.b0; bB1[(size_t) k] = c.b1; bB2[(size_t) k] = c.b2; bA1[(size_t) k] = c.a1; bA2[(size_t) k] = c.a2;
             ce[(size_t) k] = std::exp (-1.0 / (std::max (0.002, 2.0 / fb[(size_t) k]) * fs));
+            omCe[(size_t) k] = 1.0 - ce[(size_t) k];
         }
         double lo, hi;
         zoneLoHi (forme, f0, q, fs, 1.5, lo, hi);
@@ -82,7 +84,8 @@ public:
     void reset()
     {
         band.reset();
-        for (auto& b : bp) b.reset();
+        std::fill (bZ1.begin(), bZ1.end(), 0.0);
+        std::fill (bZ2.begin(), bZ2.end(), 0.0);
         std::fill (ef.begin(), ef.end(), 0.0);
         std::fill (w, w + ordre, 0.0);
         std::fill (buf, buf + ordre, 0.0);
@@ -104,10 +107,16 @@ public:
     inline double detect (double x, double& bOut)
     {
         const double b = band.process (x);
-        for (int k = 0; k < K; ++k)
-        {
-            const double bk = bp[(size_t) k].process (x);
-            ef[(size_t) k] = (1.0 - ce[(size_t) k]) * std::abs (bk) + ce[(size_t) k] * ef[(size_t) k];
+        {   // banc de K biquads en tableaux separes (meme arithmetique que Biquad::process, forme transposee II) : la boucle se vectorise
+            double* z1 = bZ1.data(); double* z2 = bZ2.data(); double* pef = ef.data();
+            const double *b0 = bB0.data(), *b1 = bB1.data(), *b2 = bB2.data(), *a1 = bA1.data(), *a2 = bA2.data(), *pce = ce.data(), *poc = omCe.data();
+            for (int k = 0; k < K; ++k)
+            {
+                const double y = b0[k] * x + z1[k];
+                z1[k] = b1[k] * x - a1[k] * y + z2[k];
+                z2[k] = b2[k] * x - a2[k] * y;
+                pef[k] = poc[k] * std::abs (y) + pce[k] * pef[k];
+            }
         }
         // prédicteur NLMS du signal de zone
         double pred = 0.0, bb = 0.0;
@@ -200,7 +209,7 @@ private:
 
     Biquad band;
     Cible cible = Cible::Transitoires;
-    std::vector<Biquad> bp;
+    std::vector<double> bB0, bB1, bB2, bA1, bA2, bZ1, bZ2, omCe;      // banc d'analyse en tableaux separes (SoA)
     std::vector<double> fb, ce, ef, Lc, Hbuf, anneau, tri, bd;
     std::vector<int> ctx;
     int K = 0, g0 = 0, lag = 2, R = 1, hPos = 0, nAnneau = 0, posAnneau = 0, pousses = 0, bdPos = 0;

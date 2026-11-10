@@ -19,7 +19,7 @@ enum class SourceExc { Auto, Bande };
 namespace courbes
 {
 constexpr double B = 0.18, EPS_R = 0.05;               // EPS_R : coude du Rectifier à drive 1,5 (varie avec « Saturation » : eps = 0,05 · (1,5 / drive)²)
-inline double logcosh (double u) { const double a = std::abs (u); return a + std::log1p (std::exp (-2.0 * a)) - std::log (2.0); }
+inline double logcosh (double u) { const double a = std::abs (u); return a + std::log1p (std::exp (-2.0 * a)) - 0.69314718055994530942; }
 inline double SL() { const double t = std::tanh (B); return 1.0 - t * t; }
 
 inline double f (ModeSat m, double x, double eps = EPS_R)

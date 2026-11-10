@@ -71,7 +71,7 @@ public:
         const double L = 20.0 * std::log10 (yHold * (kPi / 2.0) + 1e-12);
         double s = smoothstep ((T - L) / W);
         const double Es = es.process (ab);                      // le plancher est suivi même à G <= 0 (n'influence pas la sortie) : un passage à G > 0 en direct part chaud
-        const double inv = std::min (1.0 / (Es * (kPi / 2.0) + 1e-9), std::pow (10.0, -plancherMin / 20.0));
+        const double inv = std::min (1.0 / (Es * (kPi / 2.0) + 1e-9), invPlancherMin);
         if (firstSample) { invFloor = inv; firstSample = false; }
         invFloor = std::max (inv, cn * invFloor);              // min-suiveur : 1/N = max(1/Es, c·1/N)
         if (G > 0.0)
@@ -85,7 +85,7 @@ public:
 
     inline double apply (double x, double b, double s, double* gOut = nullptr) const
     {
-        const double g = std::pow (10.0, G * s / 20.0);
+        const double g = std::exp (G * s * 0.11512925464970229);          // = 10^(G s/20) ; exp coute 2,8x moins que pow (identite exacte a 1e-15)
         if (gOut) *gOut = g;
         return x + (g - 1.0) * b;
     }
@@ -93,6 +93,7 @@ public:
 private:
     Biquad band;
     OnePole ea, es;
+    double invPlancherMin = 5623.413251903491;                         // = 10^(75/20) : plancher absolu −75 dBFS, constante (etait recalcule par pow a chaque echantillon)
     double G = 0, W = 6, T = -40, ca = 0, cr = 0, cs = 0, cn = 0, yHold = 0, invFloor = 0;
     bool started = false, firstSample = false;
 };

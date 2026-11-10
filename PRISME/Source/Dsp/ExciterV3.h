@@ -93,7 +93,7 @@ public:
     }
 
 private:
-    static double logcosh (double u) { const double a = std::abs (u); return a + std::log1p (std::exp (-2.0 * a)) - std::log (2.0); }
+    static double logcosh (double u) { const double a = std::abs (u); return a + std::log1p (std::exp (-2.0 * a)) - 0.69314718055994530942; }   // ln 2 constant (etait recalcule)
 
     inline double curveF (double x) const
     {
