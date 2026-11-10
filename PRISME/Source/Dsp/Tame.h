@@ -144,9 +144,9 @@ public:
     inline void analyse (double x)
     {
         const int n = N;
-        double* z1 = aZ1.data(); double* z2 = aZ2.data(); double* pef = ef.data(); double* pes = es.data();
-        const double *b0 = aB0.data(), *b1 = aB1.data(), *b2 = aB2.data(), *a1 = aA1.data(), *a2 = aA2.data();
-        const double *pcf = cf.data(), *pcs = cse.data(), *ocf = aOmCf.data(), *ocs = aOmCs.data();
+        double* __restrict z1 = aZ1.data(); double* __restrict z2 = aZ2.data(); double* __restrict pef = ef.data(); double* __restrict pes = es.data();
+        const double* __restrict b0 = aB0.data(); const double* __restrict b1 = aB1.data(); const double* __restrict b2 = aB2.data(); const double* __restrict a1 = aA1.data(); const double* __restrict a2 = aA2.data();
+        const double* __restrict pcf = cf.data(); const double* __restrict pcs = cse.data(); const double* __restrict ocf = aOmCf.data(); const double* __restrict ocs = aOmCs.data();
         for (int k = 0; k < n; ++k)                            // analyse : N biquads indépendants + 2 enveloppes (sans dépendance entre bandes)
         {
             const double yk = b0[k] * x + z1[k];
@@ -163,8 +163,8 @@ public:
     {
         const bool point = isPoint();
         const int na = (int) act.size();
-        double *cp = cPrev.data(), *cc = cCur.data(), *tm = term.data(), *sz1 = sZ1.data(), *sz2 = sZ2.data();
-        const double *sb0 = sB0.data(), *sb1 = sB1.data(), *sb2 = sB2.data(), *sa1 = sA1.data(), *sa2 = sA2.data();
+        double* __restrict cp = cPrev.data(); double* __restrict cc = cCur.data(); double* __restrict tm = term.data(); double* __restrict sz1 = sZ1.data(); double* __restrict sz2 = sZ2.data();
+        const double* __restrict sb0 = sB0.data(); const double* __restrict sb1 = sB1.data(); const double* __restrict sb2 = sB2.data(); const double* __restrict sa1 = sA1.data(); const double* __restrict sa2 = sA2.data();
         if (point)                                            // nouvelle cible c = (g − 1)/S aux points décimés seulement : exp et division 1 fois sur 16
         {
             const double kExp = sign * 0.11512925464970229;   // ln(10)/20

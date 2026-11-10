@@ -77,13 +77,15 @@ template <int N>
 class Historique
 {
 public:
-    void reset() { buf.fill (0.0); pos = 0; }
-    inline void push (double x) { pos = (pos == 0) ? N - 1 : pos - 1; buf[(size_t) pos] = x; }
-    inline double at (int k) const { int i = pos + k; if (i >= N) i -= N; return buf[(size_t) i]; }
+    void reset() { buf.fill (0.0); pos = N; }
+    // tampon miroir : la valeur est ecrite en pos et en pos + N, donc buf[pos .. pos + N - 1] est toujours l'historique contigu (at(0) = la plus recente)
+    inline void push (double x) { pos = (pos == 0) ? N - 1 : pos - 1; buf[(size_t) pos] = x; buf[(size_t) pos + N] = x; }
+    inline double at (int k) const { return buf[(size_t) (pos + k)]; }
+    inline const double* data() const { return buf.data() + pos; }                    // pointeur contigu sur les N dernieres valeurs
 
 private:
-    std::array<double, N> buf {};
-    int pos = 0;
+    std::array<double, 2 * N> buf {};
+    int pos = N;
 };
 
 class Exciter

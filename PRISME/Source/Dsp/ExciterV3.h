@@ -77,11 +77,13 @@ public:
         const double u = drive * b / S;
         hUp.push (u);
         double v0 = 0, v1 = 0;
-        for (int i = 0; i < 21; ++i) v0 += tables::hUp[2 * i] * hUp.at (i);
-        for (int i = 0; i < 20; ++i) v1 += tables::hUp[2 * i + 1] * hUp.at (i);
+        { const double* hu = hUp.data();                                              // lecture contigue (tampon miroir), memes produits, meme ordre
+          for (int i = 0; i < 21; ++i) v0 += tables::hUp[2 * i] * hu[i];
+          for (int i = 0; i < 20; ++i) v1 += tables::hUp[2 * i + 1] * hu[i]; }
         hY.push (adaa (v0));
         double y = 0;
-        for (int i = 0; i < 41; ++i) y += tables::h0[i] * hY.at (i);
+        { const double* hy = hY.data();
+          for (int i = 0; i < 41; ++i) y += tables::h0[i] * hy[i]; }
         hY.push (adaa (v1));
         const double ud = du.push (u), Sd = dS.push (S);
         double res = (y - fz - purete * c1 * ud) * Sd / (drive * c1);

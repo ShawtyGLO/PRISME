@@ -108,8 +108,8 @@ public:
     {
         const double b = band.process (x);
         {   // banc de K biquads en tableaux separes (meme arithmetique que Biquad::process, forme transposee II) : la boucle se vectorise
-            double* z1 = bZ1.data(); double* z2 = bZ2.data(); double* pef = ef.data();
-            const double *b0 = bB0.data(), *b1 = bB1.data(), *b2 = bB2.data(), *a1 = bA1.data(), *a2 = bA2.data(), *pce = ce.data(), *poc = omCe.data();
+            double* __restrict z1 = bZ1.data(); double* __restrict z2 = bZ2.data(); double* __restrict pef = ef.data();
+            const double* __restrict b0 = bB0.data(); const double* __restrict b1 = bB1.data(); const double* __restrict b2 = bB2.data(); const double* __restrict a1 = bA1.data(); const double* __restrict a2 = bA2.data(); const double* __restrict pce = ce.data(); const double* __restrict poc = omCe.data();
             for (int k = 0; k < K; ++k)
             {
                 const double y = b0[k] * x + z1[k];
