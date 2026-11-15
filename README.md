@@ -36,3 +36,9 @@ Cible : VST3, Windows 64 bits. Validation avec [pluginval](https://github.com/Tr
 
 Conception, bancs de mesure et validation sont de moi. L'écriture du code s'appuie sur une
 assistance IA.
+
+## Droits
+
+© Lucas Lallier-Ginoux. **Tous droits réservés.** Ce dépôt est publié en consultation
+uniquement, comme portfolio. Aucune licence d'utilisation, de modification, de redistribution
+ou d'exploitation commerciale n'est accordée.
