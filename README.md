@@ -1,7 +1,16 @@
 # PRISME
 
-Traitement d'excitation et de mastering en C++ / JUCE, avec un prototype Python et un banc de
-mesure complet.
+Traitement d'excitation et de gestion de la dynamique et des détails utilisables en mix comme en mastering en C++ / JUCE, avec un prototype Python et un banc de mesure complet.
+
+Ce plugin peut :
+
+- saturer ;
+- augmenter ou diminuer les résonances (comme Soothe) ;
+- augmenter ou diminuer les détails sonores (comme de l'upward compression) ;
+- augmenter ou diminuer les transients ou les sustains.
+
+Tout cela de manière parallèle et l'interface est utilisables comme un EQ.
+  
 
 ## La démarche
 
