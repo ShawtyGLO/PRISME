@@ -26,6 +26,20 @@ Exemple, pour le mode « Iron Auto flanc raide » du 24/09/2026 :
 Les paramètres exacts de la bande sont notés à côté. N'importe qui peut refabriquer le résultat
 et vérifier le chiffre : c'est l'objectif.
 
+## Ce que mesurent les bancs
+
+| Banc | Ce qu'il isole |
+|---|---|
+| `bench_ablation` | la contribution réelle d'un étage, en le retirant |
+| `bench_alias` | le repliement introduit par la non-linéarité |
+| `bench_leak` | la fuite entre bandes du découpage |
+| `bench_equilibre` | l'équilibre spectral avant et après |
+| `bench_mastering` | la comparaison sec contre rendu, à niveau égalisé |
+| `bench_quality`, `bench_scaling` | la tenue en qualité et en charge |
+
+L'ablation est le plus instructif : tant qu'on n'a pas écouté ce que devient le son **sans** un
+étage, on ne sait pas ce que cet étage apporte — on sait seulement ce qu'on croit entendre.
+
 ## Contenu
 
 | Dossier | Rôle |
